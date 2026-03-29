@@ -214,17 +214,25 @@ def chat():
     data = request.json
     user_text = data.get('text', '')
     image_base64 = data.get('image', None)
-    selected_model = data.get('model', 'gpt-5.2')
+    selected_model = data.get('model', 'gpt-3.5-turbo')
     content = [{"type": "text", "text": user_text}, {"type": "image_url", "image_url": {"url": image_base64}}] if image_base64 else user_text
     try:
-         # Chat逻辑保持不变
-        response = requests.post(API_URL, headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.7, "network": True})
+        response = requests.post(
+            API_URL, 
+            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+            json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.7},
+            # timeout=30 # 增加超时保护
+        )
+        
+        # 请求成功
         if response.status_code == 200:
             return jsonify({"status": "success", "reply": response.json()['choices'][0]['message']['content']})
-    except:
-        pass
-    return jsonify({"status": "error", "message": "请求异常"}), 500
+        # 请求失败（如模型名错误、key失效、余额不足等）
+        else:
+            return jsonify({"status": "error", "reply": f"⚠️ API 服务商报错：状态码 {response.status_code}，详情: {response.text}"})
+            
+    except Exception as e:
+        return jsonify({"status": "error", "reply": f"⚠️ 本地服务器请求异常: {str(e)}"})
 
 if __name__ == '__main__':
     init_db()

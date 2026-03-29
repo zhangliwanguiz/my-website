@@ -55,20 +55,19 @@
             <div class="logo-title">AI金融智能理财</div>
             <div class="section-title">AI 模型配置</div>
           <select id="modelSelect" class="model-select">
-                <option value="ChatGPT-5.2">ChatGPT-5.2</option>
-                <option value="ChatGPT-5-mini">ChatGPT-5-mini</option>
-                <option value="ChatGPT-5-nano">ChatGPT-5-nano</option>
-                <option value="Claude Haiku 4.5">Claude Haiku 4.5</option>
-                <option value="Claude Opus 4.5">Claude Opus 4.5</option>
-                <option value="Claude Opus 4.6">Claude Opus 4.6</option>
-                <option value="Claude Sonnet 4.5">Claude Sonnet 4.5</option>
-                <option value="Claude Sonnet 4.6">Claude Sonnet 4.6</option>
-                <option value="Gemini 3.1 pro" selected>Gemini 3.1 pro</option>
-                <option value="Gemini 3 flash">Gemini 3 flash</option>
-                <option value="GLM-5">GLM-5</option>
-                <option value="Kimi-K2.5">Kimi-K2.5</option>
-                <option value="MiniMax-M2.5">MiniMax-M2.5</option>
+                <option value="gpt-5.2">gpt-5.2</option>
+                <option value="gpt-5-mini">gpt-5-mini</option>
+                <option value="gpt-5-nano">gpt-5-nano</option>
+                <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
+                <option value="gemini-3.1-pro" selected>Gemini 3.1 pro</option>
+                <option value="gemini-3-flash">Gemini 3 flash</option>
+                <option value="glm-5">GLM-5</option>
+                <option value="kimi-k2.5">Kimi-K2.5</option>
+                <option value="minimax-m2.5">MiniMax-M2.5</option>
             </select>
+
 
             <div class="section-title">快捷交易指令</div>
             <button class="btn-quick" onclick="quickPrompt('帮我分析一下上方表格中最大跌幅资产')">📉 分析最大跌幅逻辑</button>
@@ -195,15 +194,32 @@
             b.scrollTop = b.scrollHeight; return b.lastElementChild;
         }
 
-        function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const txt = input.value.trim(); if(!txt) return;
-            appendMsg('user', txt); input.value = '';
-            fetch('/chat', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({text: txt, model: document.getElementById('modelSelect').value})
-            }).then(r => r.json()).then(d => appendMsg('bot', d.reply));
-        }
+function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const txt = input.value.trim(); 
+    if(!txt) return;
+    
+    appendMsg('user', txt); 
+    input.value = '';
+    
+    // 给UI上的“发送中”一点提示
+    const loadingMsg = appendMsg('bot', '思考中...');
+
+    fetch('/chat', {
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: txt, model: document.getElementById('modelSelect').value})
+    })
+    .then(r => r.json())
+    .then(d => {
+        // 兼容处理：寻找 reply 字段，找不到再找 message 字段
+        loadingMsg.querySelector('.msg-bubble').innerText = d.reply || d.message || "未知响应错误";
+    })
+    .catch(err => {
+        loadingMsg.querySelector('.msg-bubble').innerText = "⚠️ 网络或接口调用失败，详情请看F12控制台。";
+        console.error("Chat Error:", err);
+    });
+}
         
         // 页面打开同时请求
         window.onload = function() { loadTableData(); loadRealFundamentals(); };
