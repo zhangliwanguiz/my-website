@@ -7,14 +7,15 @@ import re
 from datetime import datetime
 import atexit
 import time
-
+import os  # <--- 新增这行
 app = Flask(__name__)
-
+# 判断是否在 Vercel 环境运行，Vercel 只能写入 /tmp 目录
+DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
 API_KEY = 'sk-1e230smnmo9a8n4jscb1ej3373y2hu3o'
 API_URL = "https://api.bankofai.io/v1/chat/completions"
 
 def init_db():
-    conn = sqlite3.connect('finance_data.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS finance (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,7 +110,7 @@ def fetch_and_update_data():
         except Exception as e:
             data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    conn = sqlite3.connect('finance_data.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     for item in data_list:
         c.execute('INSERT INTO finance (time, type, price, max_price, change) VALUES (?,?,?,?,?)',
@@ -199,7 +200,7 @@ def index():
 
 @app.route('/get_finance_data')
 def get_finance_data():
-    conn = sqlite3.connect('finance_data.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  
     c = conn.cursor()
     c.execute('SELECT time, type, price, max_price, change FROM finance ORDER BY id DESC LIMIT 7')
