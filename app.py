@@ -9,6 +9,8 @@ import atexit
 import time
 import os  # <--- 新增这行
 app = Flask(__name__)
+# 新增全局变量代替数据库
+GLOBAL_DATA_CACHE = []
 # 判断是否在 Vercel 环境运行，Vercel 只能写入 /tmp 目录
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
 API_KEY = 'sk-1e230smnmo9a8n4jscb1ej3373y2hu3o'
@@ -31,8 +33,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ==== 行情走势：抓取真实K线 ====== 
+# ==== 行情走势：抓取真实K线 (纯内存版) ====== 
 def fetch_and_update_data():
+    global GLOBAL_DATA_CACHE
     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     data_list = []
     
@@ -40,28 +43,28 @@ def fetch_and_update_data():
     start_time_ms = 1577836800000
     current_time_sec = int(time.time())
 
-    print(f"[{current_time_str}] 正在连接原生金融节点抓取真实K线数据...")
-
+    # 1. 虚拟货币 (缩短 timeout 防超时)
     crypto_symbols = {"BTC(比特币)": "BTCUSDT", "TRX(波场)": "TRXUSDT"}
     for name, symbol in crypto_symbols.items():
         try:
             url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1M&startTime={start_time_ms}"
-            res = requests.get(url, timeout=10).json()
+            res = requests.get(url, timeout=4).json()
             if res and isinstance(res, list):
                 highs = [float(k[2]) for k in res]
                 max_price = max(highs)
                 current_price = float(res[-1][4])
                 drawdown = ((current_price - max_price) / max_price) * 100
                 data_list.append({"时间": current_time_str, "类别": name, "价格": f"{current_price:.2f}", "最高价格": f"{max_price:.2f}", "涨跌幅": f"{drawdown:.2f}%"})
-        except Exception as e:
-            data_list.append({"时间": current_time_str, "类别": name, "价格": "异常", "最高价格": "-", "涨跌幅": "-"})
+        except:
+            data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
+    # 2. 美股 (缩短 timeout)
     us_symbols = {"标普500指数(SPX)": "^GSPC", "纳斯达克100(NDX)": "^NDX", "黄金(XAUT)": "XAUT-USD"}
     headers = {'User-Agent': 'Mozilla/5.0'}
     for name, symbol in us_symbols.items():
         try:
             url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={start_time_sec}&period2={current_time_sec}&interval=1mo"
-            res = requests.get(url, headers=headers, timeout=10).json()
+            res = requests.get(url, headers=headers, timeout=4).json()
             result = res.get('chart', {}).get('result', [{}])[0]
             current_price = result.get('meta', {}).get('regularMarketPrice')
             high_list = result.get('indicators', {}).get('quote', [{}])[0].get('high', [])
@@ -70,54 +73,46 @@ def fetch_and_update_data():
                 max_price = max(valid_highs)
                 drawdown = ((current_price - max_price) / max_price) * 100
                 data_list.append({"时间": current_time_str, "类别": name, "价格": f"{current_price:.2f}", "最高价格": f"{max_price:.2f}", "涨跌幅": f"{drawdown:.2f}%"})
-        except Exception as e:
-            data_list.append({"时间": current_time_str, "类别": name, "价格": "异常", "最高价格": "-", "涨跌幅": "-"})
+        except:
+            data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
+    # 3. A股红利 (缩短 timeout)
     cn_symbols = {
         "红利低波100ETF(159307)": ["0.159307", "1.159307"], 
         "红利低波100指数(930955)": ["1.930955", "0.930955", "2.930955"] 
     }
-    
     for name, secid_list in cn_symbols.items():
         try:
             klines = []
             fqt_flag = "0" if "930955" in name else "1"
-            
             for secid in secid_list:
                 url = f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=103&fqt={fqt_flag}&end=20500101&lmt=120"
-                res = requests.get(url, timeout=10).json()
+                res = requests.get(url, timeout=4).json()
                 data_obj = res.get('data')
                 if data_obj and isinstance(data_obj, dict) and data_obj.get('klines'):
                     klines = data_obj.get('klines')
                     break  
-                
-                url_day = f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=101&fqt={fqt_flag}&end=20500101&lmt=1500"
-                res_day = requests.get(url_day, timeout=10).json()
-                data_obj_day = res_day.get('data')
-                if data_obj_day and isinstance(data_obj_day, dict) and data_obj_day.get('klines'):
-                    klines = data_obj_day.get('klines')
-                    break
-
             if klines:
                 highs = [float(k.split(',')[3]) for k in klines]
                 closes = [float(k.split(',')[2]) for k in klines]
-                max_price = max(highs)
-                current_price = closes[-1]
-                drawdown = ((current_price - max_price) / max_price) * 100
-                data_list.append({"时间": current_time_str, "类别": name, "价格": f"{current_price:.4f}", "最高价格": f"{max_price:.4f}", "涨跌幅": f"{drawdown:.2f}%"})
+                drawdown = ((closes[-1] - max(highs)) / max(highs)) * 100
+                data_list.append({"时间": current_time_str, "类别": name, "价格": f"{closes[-1]:.4f}", "最高价格": f"{max(highs):.4f}", "涨跌幅": f"{drawdown:.2f}%"})
             else:
-                data_list.append({"时间": current_time_str, "类别": name, "价格": "接口维护", "最高价格": "-", "涨跌幅": "-"})
-        except Exception as e:
+                data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
+        except:
             data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    for item in data_list:
-        c.execute('INSERT INTO finance (time, type, price, max_price, change) VALUES (?,?,?,?,?)',
-                 (item['时间'], item['类别'], item['价格'], item['最高价格'], item['涨跌幅']))
-    conn.commit()
-    conn.close()
+    # ====== 摒弃数据库，直接存入内存 ======
+    GLOBAL_DATA_CACHE = data_list
     return True, "数据刷新成功"
+
+@app.route('/get_finance_data')
+def get_finance_data():
+    global GLOBAL_DATA_CACHE
+    # 如果内存中为空（如 Vercel 刚唤醒），不要让前端卡死，给出温馨提示
+    if not GLOBAL_DATA_CACHE:
+        return jsonify([{"时间": "-", "类别": "云端节点已唤醒", "价格": "-", "最高价格": "-", "涨跌幅": "👉 请点击右上角 [刷新节点] 获取实时数据"}])
+    return jsonify(GLOBAL_DATA_CACHE)
 
 # ==== 全新接口：通过原生 API 解析获取真实 PE、股息与实际行业数据 ====
 @app.route('/api/fundamentals', methods=['GET'])
@@ -198,17 +193,17 @@ atexit.register(lambda: scheduler.shutdown())
 def index():
     return render_template('index.html')
 
-@app.route('/get_finance_data')
-def get_finance_data():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  
-    c = conn.cursor()
-    c.execute('SELECT time, type, price, max_price, change FROM finance ORDER BY id DESC LIMIT 7')
-    rows = c.fetchall()
-    conn.close()
+# @app.route('/get_finance_data')
+# def get_finance_data():
+#     conn = sqlite3.connect(DB_PATH)
+#     conn.row_factory = sqlite3.Row  
+#     c = conn.cursor()
+#     c.execute('SELECT time, type, price, max_price, change FROM finance ORDER BY id DESC LIMIT 7')
+#     rows = c.fetchall()
+#     conn.close()
     
-    data_list = [{"时间": r['time'], "类别": r['type'], "价格": r['price'], "最高价格": r['max_price'], "涨跌幅": r['change']} for r in rows]
-    return jsonify(data_list[::-1])
+#     data_list = [{"时间": r['time'], "类别": r['type'], "价格": r['price'], "最高价格": r['max_price'], "涨跌幅": r['change']} for r in rows]
+#     return jsonify(data_list[::-1])
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -236,5 +231,6 @@ def chat():
         return jsonify({"status": "error", "reply": f"⚠️ 本地服务器请求异常: {str(e)}"})
 
 if __name__ == '__main__':
-    init_db()
+    # init_db()
+
     app.run(debug=True, use_reloader=False, host='0.0.0.0')
