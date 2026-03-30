@@ -68,9 +68,26 @@
         .msg-bubble { position: relative; max-width: 85%; line-height: 1.6; font-size: 14.5px; color: var(--text-main); padding: 5px 0; }
         .user .msg-bubble { background: #f3f4f6; padding: 12px 18px; border-radius: 18px; border-top-right-radius: 4px; word-break: break-word;}
         
-        .copy-all-btn { position: absolute; right: 0; top: -20px; font-size: 11px; border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-family: monospace; font-weight:600;}
-        
-        .msg-bubble pre { background: #1e1e1e !important; border-radius: 12px; padding: 16px; overflow-x: auto; margin: 12px 0; border: 1px solid #333; }
+        /* .copy-all-btn { position: absolute; right: 0; top: -20px; font-size: 11px; border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-family: monospace; font-weight:600;} */
+        /* AI 与 User 双边自适应悬浮复制按钮 */
+.copy-all-btn { position: absolute; top: -24px; font-size: 11px; border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-family: 'JetBrains Mono', monospace; font-weight:600; display: inline-flex; align-items: center; height: 22px;}
+.copy-all-btn:hover { background: #e5e7eb; color: #111827;}
+.bot .copy-all-btn { right: 0; } /* AI 回复按钮在右上角 */
+.user .copy-all-btn { left: 0; } /* 用户复述按钮在左上角 (避免贴到屏幕边缘) */
+
+/* --- 彻底解决代码框变黑、全黑看不见字的美化问题 --- */
+.msg-bubble pre { 
+    background: #1e1e1e !important; /* 深色背景 */
+    color: #abb2bf !important;      /* 亮点：强制修改文本为浅灰色，脱离外层的主题黑 */
+    border-radius: 12px; 
+    padding: 16px; 
+    overflow-x: auto; 
+    margin: 12px 0; 
+    border: 1px solid #333; 
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5); /* 增加内阴影提升质感 */
+}
+.msg-bubble pre code { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13.5px; color: inherit; }
+.msg-bubble pre code.hljs { background: transparent !important; padding: 0; } /* 防止高亮库底色冲突 */
         .msg-bubble code { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
         .msg-bubble img { max-width: 100%; border-radius: 8px;}
         
@@ -347,9 +364,61 @@
         }
         // =================================================================
 
-        let recognition = null, isRecording = false;
-        function toggleVoice() { /* 同前，略做保护 */ }
+        // let recognition = null, isRecording = false;
+        // function toggleVoice() { /* 同前，略做保护 */ }
 
+// === 绝地反击，全量还原原生语音录入API机制 ===
+let recognition = null;
+let isRecording = false;
+
+function toggleVoice() {
+    const btn = document.getElementById('voiceBtn');
+    const input = document.getElementById('chatInput');
+
+    // 再次点击时停止录音
+    if (isRecording) {
+        if (recognition) recognition.stop();
+        return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert("当前环境或浏览器不支持原生语音API（请确保由于安全机制使用了HTTPS协议或Chrome/Edge内核浏览器）。");
+        return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN'; // 识别中文
+    recognition.interimResults = false; // 关闭过程预览，只输出最终结果防抖动
+
+    // 开始录音
+    recognition.onstart = () => {
+        isRecording = true;
+        btn.classList.add('recording'); // 此时麦克风按钮会闪烁红光
+        input.placeholder = "🔴 正在聆听，请讲话...";
+    };
+
+    // 录音成功转文字
+    recognition.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        input.value += text;
+    };
+
+    // 报错处理
+    recognition.onerror = (e) => {
+        alert("⚠️ 语音唤醒失败，请检查浏览器是否允许当前网站使用麦克风。");
+        console.error(e.error);
+    };
+
+    // 录音结束
+    recognition.onend = () => {
+        isRecording = false;
+        btn.classList.remove('recording');
+        input.placeholder = "输入需求或点击话筒录音...";
+    };
+
+    recognition.start();
+}
         function copyAiFullMsg(btn) {
             const str = decodeURIComponent(btn.getAttribute('data-raw'));
             navigator.clipboard.writeText(str).then(() => { btn.innerText="成功✓"; setTimeout(()=>btn.innerText="复制全部", 2000); });
@@ -366,7 +435,13 @@
                 userDisplay = txt ? `${txt}<br><span style="color:#0369a1; font-size:12px;">${attachNames}</span>` : `<span style="color:#0369a1; font-size:12px;">发了附件 ${attachNames} 对其进行运算...</span>`;
             }
 
-            appendMsg('user', userDisplay); 
+            // appendMsg('user', userDisplay); 
+            // 提取用户真实纯文本内容进行 URI 编码绑定
+const encodedUserText = encodeURIComponent(txt || window.pendingUploads.map(f => f.name).join(' '));
+// 组装带有复制按钮的用户气泡 HTML
+const finalUserHtml = `<button class="copy-all-btn" data-raw="${encodedUserText}" onclick="copyFullMsg(this)">复制全部</button>` + userDisplay;
+// 推送到聊天框面板
+appendMsg('user', finalUserHtml);
             input.value = '';
             
             // 直接将压好的纯真数据塞入 payload 传给后端
@@ -398,6 +473,17 @@
                 });
             }).catch(err => { targetBubble.innerHTML = "⚠️ 网络被掐断。"; });
         }
+        // 统一的通用复制方法，既支持 AI 回复也支持用户的消息
+function copyFullMsg(btn) {
+    // 解析出按钮上绑定的真实文本
+    const str = decodeURIComponent(btn.getAttribute('data-raw'));
+    navigator.clipboard.writeText(str).then(() => { 
+        const oldText = btn.innerText;
+        btn.innerText = "复制成功 ✓"; 
+        btn.style.color = "#10b981";
+        setTimeout(()=>{ btn.innerText = oldText; btn.style.color = ""; }, 2000); 
+    }).catch(() => alert("由于安全策略，当前剪贴板环境受限/未授权。"));
+}
     </script>
 </body>
 </html>
