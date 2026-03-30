@@ -6,12 +6,22 @@ import time
 import os
 from datetime import datetime
 import atexit
+# === 新增：文件上传处理依赖 ===
+import werkzeug.utils
+import re
+# ==============================
 
 app = Flask(__name__)
 GLOBAL_DATA_CACHE = []
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
-API_KEY = 'sk-1e230smnmo9a8n4jscb1ej3373y2hu3o'
+API_KEY = 'sk-6yu0ht1bqzqltkrdb373gecs7x41fd4h'
 API_URL = "https://api.bankofai.io/v1/chat/completions"
+
+# === 新增：上传目录配置 ===
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 限制最大 20MB（Flask底层拦截）
+# ========================
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -105,6 +115,27 @@ def refresh_data():
     success, msg = fetch_and_update_data()
     return jsonify({"status": "success" if success else "error", "message": msg})
 
+# === 新增：文件上传后端接收接口 ===
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "没有找到文件内容"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "未选择任何文件"}), 400
+    
+    # 后端兜底的安全校验拓展名
+    allowed_extensions = {'png', 'jpg', 'jpeg', 'webp', 'pdf', 'doc', 'docx', 'zip', 'txt', 'csv'}
+    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    if ext not in allowed_extensions:
+        return jsonify({"status": "error", "message": "不支持的文件格式"}), 400
+
+    filename = werkzeug.utils.secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+    return jsonify({"status": "success", "message": "上传完成", "filename": filename})
+# ===============================
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_update_data, trigger="cron", hour=9, minute=0)
 scheduler.start()
@@ -127,7 +158,24 @@ def chat():
             json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.5},
         )
         if response.status_code == 200:
-            return jsonify({"status": "success", "reply": response.json()['choices'][0]['message']['content']})
+            res_json = response.json()
+            reply_text = res_json['choices'][0]['message']['content']
+            
+            # === 新增：Token 统计逻辑 ===
+            # 首选方案：从主流大模型 API 的 usage 字段精准获取
+            total_tokens = res_json.get('usage', {}).get('total_tokens')
+            if not total_tokens:
+                # 兜底方案：按照词元/标点/空格拆分计算近似 Token
+                combined_text = content + reply_text
+                tokens_count = len(re.findall(r'[\u4e00-\u9fa5]|\w+|[^\w\s]', combined_text))
+                total_tokens = tokens_count
+            # =========================
+            
+            return jsonify({
+                "status": "success", 
+                "reply": reply_text,
+                "tokens": total_tokens # === 新增字段 ===
+            })
         else:
             return jsonify({"status": "error", "reply": f"⚠️ 接口层拦截: {response.text}"})
     except Exception as e:
