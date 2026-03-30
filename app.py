@@ -6,22 +6,22 @@ import time
 import os
 from datetime import datetime
 import atexit
-# === 新增：文件上传处理依赖 ===
 import werkzeug.utils
 import re
-# ==============================
+import base64
+import uuid
 
 app = Flask(__name__)
 GLOBAL_DATA_CACHE = []
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
-API_KEY = 'sk-6yu0ht1bqzqltkrdb373gecs7x41fd4h'
+API_KEY = 'sk-2ilbzoamvyen6fkuy3m0wpdeywcqzu4v'
 API_URL = "https://api.bankofai.io/v1/chat/completions"
 
-# === 新增：上传目录配置 ===
+# === 升级：文件上传目录与 100MB 限制配置 ===
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 限制最大 20MB（Flask底层拦截）
-# ========================
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 限制最大 100MB
+# ========================================
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -115,7 +115,6 @@ def refresh_data():
     success, msg = fetch_and_update_data()
     return jsonify({"status": "success" if success else "error", "message": msg})
 
-# === 新增：文件上传后端接收接口 ===
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -124,17 +123,23 @@ def upload_file():
     if file.filename == '':
         return jsonify({"status": "error", "message": "未选择任何文件"}), 400
     
-    # 后端兜底的安全校验拓展名
-    allowed_extensions = {'png', 'jpg', 'jpeg', 'webp', 'pdf', 'doc', 'docx', 'zip', 'txt', 'csv'}
+    # 支持的拓展名库扩大到代码等文件
+    allowed_extensions = {'png', 'jpg', 'jpeg', 'webp', 'pdf', 'doc', 'docx', 'zip', 'txt', 'csv', 'md', 'json', 'py', 'js', 'html', 'css', 'cpp'}
     ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
     if ext not in allowed_extensions:
         return jsonify({"status": "error", "message": "不支持的文件格式"}), 400
 
-    filename = werkzeug.utils.secure_filename(file.filename)
-    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    # 升级：采用 UUID 重命名解决中文名被框架拦截变空导致AI读取失败的问题
+    new_filename = f"{uuid.uuid4().hex}.{ext}"
+    save_path = os.path.join(UPLOAD_FOLDER, new_filename)
     file.save(save_path)
-    return jsonify({"status": "success", "message": "上传完成", "filename": filename})
-# ===============================
+    
+    return jsonify({
+        "status": "success", 
+        "message": "上传完成", 
+        "filename": new_filename,
+        "original_name": file.filename
+    })
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_update_data, trigger="cron", hour=9, minute=0)
@@ -150,36 +155,87 @@ def chat():
     data = request.json
     user_text = data.get('text', '')
     selected_model = data.get('model', 'gpt-3.5-turbo')
-    content = user_text
+    files_to_process = data.get('files', [])  # 获取前端传来的待处理文件ID列表
+
+    # === 升级：AI 真阅读 - 构建支持图像及文件解析的混合协议块 ===
+    payload_content = []
+    
+    # 率先压入用户的文字 prompt
+    payload_content.append({"type": "text", "text": user_text})
+    
+    # 依次处理附件交给 AI
+    for f_info in files_to_process:
+        fname = f_info.get('id')
+        og_name = f_info.get('name')
+        fpath = os.path.join(UPLOAD_FOLDER, fname)
+        
+        if os.path.exists(fpath):
+            ext = fname.rsplit('.', 1)[-1].lower() if '.' in fname else ''
+            
+            # --- 分支A：图像 Vision 处理 ---
+            if ext in ['png', 'jpg', 'jpeg', 'webp']:
+                try:
+                    with open(fpath, "rb") as image_file:
+                        b64_str = base64.b64encode(image_file.read()).decode('utf-8')
+                        mime = "image/jpeg" if ext == 'jpg' else f"image/{ext}"
+                        payload_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{b64_str}"}
+                        })
+                except Exception as e:
+                    pass
+            
+            # --- 分支B：文本/文档提炼处理 ---
+            elif ext in ['txt', 'csv', 'md', 'json', 'py', 'js', 'html', 'css', 'cpp']:
+                try:
+                    with open(fpath, "r", encoding="utf-8") as text_file:
+                        doc_text = text_file.read()[:20000] # 防超长截断处理
+                        payload_content.append({
+                            "type": "text", 
+                            "text": f"\n\n[用户提供的重要文件附件 {og_name} 的内容如下，请在回答中参考上下文]:\n```\n{doc_text}\n```"
+                        })
+                except Exception as e:
+                    pass
+            
+            # --- 分支C：二进制文件提醒 ---
+            else:
+                payload_content.append({
+                    "type": "text", 
+                    "text": f"\n\n[通知：用户已上传文件 {og_name}，但由于接口限制这是二进制格式，可能无法精准读取深层内容]"
+                })
+
+    # 如果只有文本没有文件，将其退化为普通的 string 提供更好兼容性
+    final_content = payload_content if len(payload_content) > 1 else user_text
+    
     try:
         response = requests.post(
             API_URL, 
             headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.5},
+            json={
+                "model": selected_model, 
+                "messages": [{"role": "user", "content": final_content}], 
+                "stream": False, 
+                "temperature": 0.5
+            },
         )
         if response.status_code == 200:
             res_json = response.json()
             reply_text = res_json['choices'][0]['message']['content']
             
-            # === 新增：Token 统计逻辑 ===
-            # 首选方案：从主流大模型 API 的 usage 字段精准获取
             total_tokens = res_json.get('usage', {}).get('total_tokens')
             if not total_tokens:
-                # 兜底方案：按照词元/标点/空格拆分计算近似 Token
-                combined_text = content + reply_text
-                tokens_count = len(re.findall(r'[\u4e00-\u9fa5]|\w+|[^\w\s]', combined_text))
-                total_tokens = tokens_count
-            # =========================
+                combined_text = user_text + reply_text
+                total_tokens = len(re.findall(r'[\u4e00-\u9fa5]|\w+|[^\w\s]', combined_text))
             
             return jsonify({
                 "status": "success", 
                 "reply": reply_text,
-                "tokens": total_tokens # === 新增字段 ===
+                "tokens": total_tokens 
             })
         else:
-            return jsonify({"status": "error", "reply": f"⚠️ 接口层拦截: {response.text}"})
+            return jsonify({"status": "error", "reply": f"⚠️ 接口层返回错误: {response.text}"})
     except Exception as e:
-        return jsonify({"status": "error", "reply": f"⚠️ 系统异常: {str(e)}"})
+        return jsonify({"status": "error", "reply": f"⚠️ 服务器连接异常: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False, host='0.0.0.0')
