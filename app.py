@@ -2,16 +2,13 @@ from flask import Flask, jsonify, render_template, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import sqlite3
-import json
-import re
+import time
+import os
 from datetime import datetime
 import atexit
-import time
-import os  # <--- 新增这行
+
 app = Flask(__name__)
-# 新增全局变量代替数据库
 GLOBAL_DATA_CACHE = []
-# 判断是否在 Vercel 环境运行，Vercel 只能写入 /tmp 目录
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
 API_KEY = 'sk-1e230smnmo9a8n4jscb1ej3373y2hu3o'
 API_URL = "https://api.bankofai.io/v1/chat/completions"
@@ -28,22 +25,19 @@ def init_db():
                  change TEXT NOT NULL)''')
     c.execute('SELECT COUNT(*) FROM finance')
     if c.fetchone()[0] == 0:
-        print("首次运行，正在初始化基础数据...")
         fetch_and_update_data()
     conn.commit()
     conn.close()
 
-# ==== 行情走势：抓取真实K线 (纯内存版) ====== 
 def fetch_and_update_data():
     global GLOBAL_DATA_CACHE
     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     data_list = []
-    
     start_time_sec = 1577836800
     start_time_ms = 1577836800000
     current_time_sec = int(time.time())
 
-    # 1. 虚拟货币 (缩短 timeout 防超时)
+    # 1. 虚拟货币
     crypto_symbols = {"BTC(比特币)": "BTCUSDT", "TRX(波场)": "TRXUSDT"}
     for name, symbol in crypto_symbols.items():
         try:
@@ -58,8 +52,8 @@ def fetch_and_update_data():
         except:
             data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    # 2. 美股 (缩短 timeout)
-    us_symbols = {"标普500指数(SPX)": "^GSPC", "纳斯达克100(NDX)": "^NDX", "黄金(XAUT)": "XAUT-USD"}
+    # 2. 美股
+    us_symbols = {"标普500(SPX)": "^GSPC", "纳指100(NDX)": "^NDX", "黄金(XAUT)": "XAUT-USD"}
     headers = {'User-Agent': 'Mozilla/5.0'}
     for name, symbol in us_symbols.items():
         try:
@@ -76,17 +70,13 @@ def fetch_and_update_data():
         except:
             data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    # 3. A股红利 (缩短 timeout)
-    cn_symbols = {
-        "红利低波100ETF(159307)": ["0.159307", "1.159307"], 
-        "红利低波100指数(930955)": ["1.930955", "0.930955", "2.930955"] 
-    }
+    # 3. A股
+    cn_symbols = {"红利低波ETF(159307)": ["0.159307", "1.159307"]}
     for name, secid_list in cn_symbols.items():
         try:
             klines = []
-            fqt_flag = "0" if "930955" in name else "1"
             for secid in secid_list:
-                url = f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=103&fqt={fqt_flag}&end=20500101&lmt=120"
+                url = f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=103&fqt=1&end=20500101&lmt=120"
                 res = requests.get(url, timeout=4).json()
                 data_obj = res.get('data')
                 if data_obj and isinstance(data_obj, dict) and data_obj.get('klines'):
@@ -97,87 +87,18 @@ def fetch_and_update_data():
                 closes = [float(k.split(',')[2]) for k in klines]
                 drawdown = ((closes[-1] - max(highs)) / max(highs)) * 100
                 data_list.append({"时间": current_time_str, "类别": name, "价格": f"{closes[-1]:.4f}", "最高价格": f"{max(highs):.4f}", "涨跌幅": f"{drawdown:.2f}%"})
-            else:
-                data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
         except:
             data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    # ====== 摒弃数据库，直接存入内存 ======
     GLOBAL_DATA_CACHE = data_list
     return True, "数据刷新成功"
 
 @app.route('/get_finance_data')
 def get_finance_data():
     global GLOBAL_DATA_CACHE
-    # 如果内存中为空（如 Vercel 刚唤醒），不要让前端卡死，给出温馨提示
     if not GLOBAL_DATA_CACHE:
-        return jsonify([{"时间": "-", "类别": "云端节点已唤醒", "价格": "-", "最高价格": "-", "涨跌幅": "👉 请点击右上角 [刷新节点] 获取实时数据"}])
+        return jsonify([{"时间": "-", "类别": "节点唤醒中", "价格": "-", "最高价格": "-", "涨跌幅": "请手动刷新"}])
     return jsonify(GLOBAL_DATA_CACHE)
-
-# ==== 全新接口：通过原生 API 解析获取真实 PE、股息与实际行业数据 ====
-@app.route('/api/fundamentals', methods=['GET'])
-def get_fundamentals():
-    data = {"spx": {"pe": "获取中", "dy": "获取中", "sectors": "获取中"}, 
-            "hongli": {"pe": "获取中", "dy": "获取中", "sectors": "获取中"}}
-    headers = {'User-Agent': 'Mozilla/5.0'}
-
-    # 1. 获取标普500基本面 (使用底层ETF SPY 代替获取Yahoo finance精确JSON节点)
-    try:
-        url_spy = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/SPY?modules=summaryDetail,topHoldings"
-        res_spy = requests.get(url_spy, headers=headers, timeout=5).json()
-        result_spy = res_spy.get('quoteSummary', {}).get('result', [{}])[0]
-        
-        detail = result_spy.get('summaryDetail', {})
-        data["spx"]["pe"] = detail.get('trailingPE', {}).get('fmt', '28.0')
-        data["spx"]["dy"] = detail.get('yield', {}).get('fmt', '1.4%')
-
-        # 排名行业权重
-        holdings = result_spy.get('topHoldings', {}).get('sectorWeightings', [])
-        sectors = []
-        for h in holdings:
-            for k, v in h.items():
-                sectors.append({"name": k, "weight": v.get('raw', 0)})
-        sectors.sort(key=lambda x: x['weight'], reverse=True)
-        # 英文转中文美化
-        trans_dict = {"technology": "科技", "financialServices": "金融", "healthcare": "医疗"}
-        top_3 = " | ".join([f"{trans_dict.get(s['name'], s['name'])} {s['weight']*100:.1f}%" for s in sectors[:3]])
-        data["spx"]["sectors"] = top_3 if top_3 else "科技 29% | 金融 13% | 医疗 12%"
-    except:
-        pass
-
-    # 2. 获取红利低波基本面 (通过同源基准ETF 512890 在东方财富最新披露接口数据)
-    try:
-        # A. 从东财API获取官方指数真实市盈率 (f115为主力市盈率节点)
-        url_em_pe = "https://push2.eastmoney.com/api/qt/stock/get?secid=1.930955&fields=f115"
-        res_em_pe = requests.get(url_em_pe, timeout=5).json()
-        if res_em_pe and res_em_pe.get("data", {}).get("f115"):
-            data["hongli"]["pe"] = str(round(res_em_pe["data"]["f115"] / 100.0, 2))
-
-        # B. 暴力正则抽天天基金详情网实时HTML中的持仓行业披露 (官方接口数据源)
-        url_fund_sector = "http://fundf10.eastmoney.com/Data/FundDataPortfolio_Interface.aspx?dt=14&code=512890"
-        res_sector = requests.get(url_fund_sector, headers=headers, timeout=5).text
-        # 从HTML表格解析行业与百分比
-        matches = re.findall(r"<td class='tol'[^>]*>(.*?)</td>\s*<td class='tor'[^>]*>(.*?)</td>", res_sector)
-        if matches:
-            # 数据格式如 ('制造业', '31.40%')
-            top_3_cn = " | ".join([f"{m[0].replace('业','')} {m[1]}" for m in matches[:3]])
-            data["hongli"]["sectors"] = top_3_cn
-        else:
-            data["hongli"]["sectors"] = "银行 22.1% | 煤炭 14.5% | 交运 11.2%"
-
-        # C. 估测或使用预设官方股息
-        # 红利实际股息由PE模型推算或默认官方最近一次均值
-        pe_f = float(data["hongli"]["pe"]) if data["hongli"]["pe"] != "获取中" else 6.0
-        data["hongli"]["dy"] = f"{round((1 / pe_f) * 35, 2)}%" # 按35%分红率简单反演近端均值
-    except:
-        pass
-
-        if data["spx"]["pe"] == "获取中":
-            data["spx"].update({"pe": "28.0", "dy": "1.4%", "sectors": "科技 29.2% | 金融 13.1% | 医疗 12.4%"})
-        if data["hongli"]["pe"] == "获取中" or data["hongli"]["dy"] == "获取中":
-            data["hongli"].update({"pe": "6.15", "dy": "5.8%", "sectors": "银行 22.1% | 煤炭 14.5% | 交运 11.2%"})
-
-        return jsonify(data)
 
 @app.route('/refresh_data', methods=['POST'])
 def refresh_data():
@@ -193,44 +114,24 @@ atexit.register(lambda: scheduler.shutdown())
 def index():
     return render_template('index.html')
 
-# @app.route('/get_finance_data')
-# def get_finance_data():
-#     conn = sqlite3.connect(DB_PATH)
-#     conn.row_factory = sqlite3.Row  
-#     c = conn.cursor()
-#     c.execute('SELECT time, type, price, max_price, change FROM finance ORDER BY id DESC LIMIT 7')
-#     rows = c.fetchall()
-#     conn.close()
-    
-#     data_list = [{"时间": r['time'], "类别": r['type'], "价格": r['price'], "最高价格": r['max_price'], "涨跌幅": r['change']} for r in rows]
-#     return jsonify(data_list[::-1])
-
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
     user_text = data.get('text', '')
-    image_base64 = data.get('image', None)
     selected_model = data.get('model', 'gpt-3.5-turbo')
-    content = [{"type": "text", "text": user_text}, {"type": "image_url", "image_url": {"url": image_base64}}] if image_base64 else user_text
+    content = user_text
     try:
         response = requests.post(
             API_URL, 
             headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.7},
-            # timeout=30 # 增加超时保护
+            json={"model": selected_model, "messages": [{"role": "user", "content": content}], "stream": False, "temperature": 0.5},
         )
-        
-        # 请求成功
         if response.status_code == 200:
             return jsonify({"status": "success", "reply": response.json()['choices'][0]['message']['content']})
-        # 请求失败（如模型名错误、key失效、余额不足等）
         else:
-            return jsonify({"status": "error", "reply": f"⚠️ API 服务商报错：状态码 {response.status_code}，详情: {response.text}"})
-            
+            return jsonify({"status": "error", "reply": f"⚠️ 接口层拦截: {response.text}"})
     except Exception as e:
-        return jsonify({"status": "error", "reply": f"⚠️ 本地服务器请求异常: {str(e)}"})
+        return jsonify({"status": "error", "reply": f"⚠️ 系统异常: {str(e)}"})
 
 if __name__ == '__main__':
-    # init_db()
-
     app.run(debug=True, use_reloader=False, host='0.0.0.0')
