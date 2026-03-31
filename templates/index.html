@@ -124,6 +124,24 @@
             .msg-bubble { max-width: 90%; }
             .input-panel { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
         }
+/* 【新增】确保侧边栏其他的导航标题、下拉框和常规按钮永远不发生挤压变形 */
+.nav-section, .btn-quick, .custom-select-wrapper { flex-shrink: 0; }
+
+/* 【修改】为其引入弹性扩展 flex:1 并在容器中固定一个基础保护高度，抵抗重排塌陷 */
+.session-list { 
+    margin-top: 10px; 
+    flex: 1;                 /* 占据由于前面几项撑开后的侧边栏全部剩余空缺 */
+    min-height: 120px;       /* 给予保底渲染空间，防止异步数据刚进入时塌陷为 0 */
+    max-height: 400px;       /* 可稍微加大显示更多历史条目 */
+    overflow-y: auto; 
+    flex-shrink: 0;          /* 最核心：宣告它绝不允许被其它元素霸占排挤 */
+}
+
+.session-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-radius: 10px; margin-bottom: 5px; transition: 0.2s;}
+.session-item:hover { background: var(--hover-bg); color: var(--text-main); }
+.session-item.active { background: #e0f2fe; color: #0369a1; font-weight: 600; }
+.btn-del-session { color: #ef4444; font-size: 14px; background: none; border: none; cursor: pointer; display: none; }
+.session-item:hover .btn-del-session { display: block; }
     </style>
 </head>
 <body>
@@ -182,7 +200,13 @@
                 <div class="nav-item" onclick="switchTab('mediaPage', this)">🚀 个人中心</div>
                                 <div class="nav-item" onclick="switchTab('apiPage', this)">⚙️ API地址和密钥配置</div>
             </div>
-            
+<div class="nav-section" style="display:flex; justify-content:space-between; align-items:center;">
+    <span>历史会话</span>
+    <span onclick="loadSessions()" style="cursor:pointer; font-size:15px;" title="手动刷新重试">🔄</span>
+</div>
+<button class="btn-quick" onclick="createNewSession()" style="color:#0369a1; border-color:#bae6fd; background:#f0f9ff;">➕ 开启全新独立对话</button>
+<div class="session-list" id="sessionList"><div style="font-size:12px;color:#9ca3af;padding:0 10px;text-align:center;">本地校验中...</div></div>
+<!-- ... 紧接着你的"教研算法快捷指令" ... -->
             <div class="nav-section">教研算法快捷指令</div>
             <button class="btn-quick" onclick="quickPrompt('我是算法讲师，请给我一份关于C++ STL容器性能避坑的授课大纲，包含代码案例。')">⚙️ C++ STL授课生成</button>
             <button class="btn-quick" onclick="quickPrompt('解析最新的动态规划(DP)内核思想，针对CSP-J/S给出核心应对策略。')">🥇 解析DP核心打法</button>
@@ -302,25 +326,36 @@
     </div>
 
     <script>
+        // 【新增】全局变量，用于记录当前的会话ID
+    let currentSessionId = null;
         // 【新增逻辑】读取/保存 API 配置
-      function saveConfig() {
-            localStorage.setItem('my_api_url', document.getElementById('cfgApiUrl').value);
-            localStorage.setItem('my_api_key', document.getElementById('cfgApiKey').value);
-            
-            // 触发自动保存的视觉提示
-            const tip = document.getElementById('saveTip');
-            if(tip) {
-                tip.style.display = 'block';
-                clearTimeout(window.saveTimer);
-                window.saveTimer = setTimeout(() => tip.style.display = 'none', 2000);
-            }
-        }
-        function loadConfig() {
-            const url = localStorage.getItem('my_api_url');
-            const key = localStorage.getItem('my_api_key');
-            if(url) document.getElementById('cfgApiUrl').value = url;
-            if(key) document.getElementById('cfgApiKey').value = key;
-        }
+
+
+ function saveConfig() {
+    localStorage.setItem('my_api_url', document.getElementById('cfgApiUrl').value);
+    localStorage.setItem('my_api_key', document.getElementById('cfgApiKey').value);
+    
+    const tip = document.getElementById('saveTip');
+    if(tip) {
+        tip.style.display = 'block';
+        clearTimeout(window.saveTimer);
+        window.saveTimer = setTimeout(() => tip.style.display = 'none', 2000);
+    }
+    loadSessions(); // 【新增】只要改了配置就重新刷一次左侧会话
+}
+
+function loadConfig() {
+    const url = localStorage.getItem('my_api_url');
+    const key = localStorage.getItem('my_api_key');
+    if(url) document.getElementById('cfgApiUrl').value = url;
+    if(key) document.getElementById('cfgApiKey').value = key;
+    
+    // 【关键新增】：页面刷新时，如果已经有API Key，立刻去拉取历史会话
+    if(key) {
+        setTimeout(loadSessions, 500); // 延迟500ms确保DOM加载完毕
+    }
+}
+       
 
         document.addEventListener('DOMContentLoaded', () => {
             loadConfig(); 
@@ -482,58 +517,71 @@
             recognition.start();
         }
 
-        // 核心信息投递逻辑
-        function sendMessage(customText = null) {
-            const input = document.getElementById('chatInput');
-            const txt = customText || input.value.trim(); 
-            if(!txt && window.pendingUploads.length === 0) return;
-            
-            let userDisplay = txt;
-            if(window.pendingUploads.length > 0) {
-                const attachNames = window.pendingUploads.map(f => `[${f.name}]`).join(' ');
-                userDisplay = txt ? `${txt}<br><span style="color:#0369a1; font-size:12px;">${attachNames}</span>` : `<span style="color:#0369a1; font-size:12px;">发了附件 ${attachNames} 对其进行运算...</span>`;
+    
+// 核心信息投递逻辑
+function sendMessage(customText = null) {
+    const input = document.getElementById('chatInput');
+    const txt = customText || input.value.trim(); 
+    if(!txt && window.pendingUploads.length === 0) return;
+    
+    let userDisplay = txt;
+    if(window.pendingUploads.length > 0) {
+        const attachNames = window.pendingUploads.map(f => `[${f.name}]`).join(' ');
+        userDisplay = txt ? `${txt}<br><span style="color:#0369a1; font-size:12px;">${attachNames}</span>` : `<span style="color:#0369a1; font-size:12px;">发了附件 ${attachNames} 对其进行运算...</span>`;
+    }
+
+    const encodedUserText = encodeURIComponent(txt || window.pendingUploads.map(f => f.name).join(' '));
+    const finalUserHtml = `<button class="copy-all-btn" data-raw="${encodedUserText}" onclick="copyFullMsg(this)">复制全部</button>` + userDisplay;
+    appendMsg('user', finalUserHtml);
+    if(!customText) input.value = '';
+    
+    const filesDataPayload = [...window.pendingUploads];
+    window.pendingUploads = [];
+    renderAttachments();
+
+    const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">云端运算中...</span>');
+    const targetBubble = loadingMsg.querySelector('.msg-bubble');
+
+    // 【修改点：核心请求逻辑】
+    fetch('/chat', {
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ 
+            text: txt, 
+            model: document.getElementById('modelSelect').value, 
+            files: filesDataPayload,
+            api_url: document.getElementById('cfgApiUrl').value.trim(),  
+            api_key: document.getElementById('cfgApiKey').value.trim(),
+            session_id: currentSessionId // 【关键新增】：告诉后端当前是在哪个会话聊天
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        const rawResponse = d.reply || "请求失败";
+        let finalHtml = "";
+
+        if(d.status === "error") {
+            finalHtml = rawResponse;
+        } else {
+            // 【关键新增】：获取后端分配的会话ID，并刷新左侧列表
+            if(d.session_id) {
+                const isNewSession = !currentSessionId;
+                currentSessionId = d.session_id; 
+                if(isNewSession) loadSessions(); // 如果是新会话，刷新左侧列表
             }
 
-            const encodedUserText = encodeURIComponent(txt || window.pendingUploads.map(f => f.name).join(' '));
-            const finalUserHtml = `<button class="copy-all-btn" data-raw="${encodedUserText}" onclick="copyFullMsg(this)">复制全部</button>` + userDisplay;
-            appendMsg('user', finalUserHtml);
-            if(!customText) input.value = '';
-            
-            const filesDataPayload = [...window.pendingUploads];
-            window.pendingUploads = [];
-            renderAttachments();
-
-            const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">云端运算中...</span>');
-            const targetBubble = loadingMsg.querySelector('.msg-bubble');
-
-            fetch('/chat', {
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ 
-                    text: txt, 
-                    model: document.getElementById('modelSelect').value, 
-                    files: filesDataPayload,
-                    api_url: document.getElementById('cfgApiUrl').value.trim(),  // 新增：提取动态URL
-                    api_key: document.getElementById('cfgApiKey').value.trim()   // 新增：提取动态KEY
-                })
-            })
-            .then(r => r.json())
-            .then(d => {
-                const rawResponse = d.reply || "请求失败";
-                let finalHtml = marked.parse(rawResponse);
-                const encodedRawStr = encodeURIComponent(rawResponse);
-                const tokensUsed = d.tokens || 0;
-                
-                // 【修改点2】返回数据增加消耗Token统计的标签
-                finalHtml = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制全部</button>` 
-                            + finalHtml 
-                            + `<br><div class="token-block">⚡ 本次消耗 Token: <b>${tokensUsed}</b></div>`;
-
-                targetBubble.innerHTML = finalHtml;
-                requestAnimationFrame(() => { const box = document.getElementById('chatBox'); box.scrollTop = box.scrollHeight; });
-            }).catch(err => { targetBubble.innerHTML = "⚠️ 网络或接口异常。"; });
+            finalHtml = marked.parse(rawResponse);
+            const encodedRawStr = encodeURIComponent(rawResponse);
+            const tokensUsed = d.tokens || 0;
+            finalHtml = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制全部</button>` 
+                        + finalHtml 
+                        + `<br><div class="token-block">⚡ 本次消耗 Token: <b>${tokensUsed}</b></div>`;
         }
 
+        targetBubble.innerHTML = finalHtml;
+        requestAnimationFrame(() => { const box = document.getElementById('chatBox'); box.scrollTop = box.scrollHeight; });
+    }).catch(err => { targetBubble.innerHTML = "⚠️ 网络或接口异常。"; });
+}
         // 小红书独立生成引擎
         function generateXhsPost() {
             const title = document.getElementById('xhsTitle').value;
@@ -568,6 +616,104 @@
                 setTimeout(()=>{ btn.innerText = oldText; btn.style.color = ""; }, 2000); 
             }).catch(() => alert("剪贴板受限"));
         }
+        // let currentSessionId = null;
+
+// 点击开启新对话
+function createNewSession() {
+    currentSessionId = null;
+    document.getElementById('chatBox').innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">已开启全新独立会话。</div></div>`;
+    document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+}
+
+
+// 请求并渲染左侧历史会话列表
+function loadSessions() {
+    const apiKey = document.getElementById('cfgApiKey').value.trim();
+    const list = document.getElementById('sessionList');
+    if (!list) return;
+    
+    if (!apiKey) {
+        list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:10px 0;text-align:center;">请先配置有效 API KEY</div>';
+        return;
+    }
+    
+    list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:10px 0;text-align:center;">拉取数据库中...</div>';
+
+    fetch('/get_sessions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ api_key: apiKey })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if(res.status !== 'success') {
+            // 如果后端报错，这一行就会在左侧直接打印具体原因！
+            list.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:10px 0;text-align:center;">数据库异常: ${res.message}</div>`;
+            return;
+        }
+        
+        const data = res.data || [];
+        if(data.length === 0) {
+            list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:10px 0;text-align:center;">目前暂无您的专属历史记录</div>';
+            return;
+        }
+        
+        list.innerHTML = '';
+        data.forEach(sess => {
+            const isActive = sess.id === currentSessionId ? 'active' : '';
+            list.innerHTML += `
+                <div class="session-item ${isActive}" onclick="switchSession(${sess.id}, this)">
+                    <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:170px;">💬 ${sess.title}</span>
+                    <button class="btn-del-session" onclick="deleteSession(event, ${sess.id})" title="删除记录">🗑️</button>
+                </div>`;
+        });
+    })
+    .catch(err => {
+        list.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:10px 0;text-align:center;">网络异常，请点击标题旁的 🔄 刷新</div>`;
+    });
+}
+
+// 切换历史会话
+function switchSession(sessId, element) {
+    const apiKey = document.getElementById('cfgApiKey').value.trim();
+    currentSessionId = sessId;
+    loadSessions(); // 刷新高亮状态
+    switchTab('chatPage', document.querySelectorAll('.nav-item')[0]);
+    
+    document.getElementById('chatBox').innerHTML = `<div style="text-align:center; color:#9ca3af; font-size:12px; margin-top:20px;">正在加载上下文记录...</div>`;
+    
+    fetch('/get_session_history', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ session_id: sessId, api_key: apiKey })
+    }).then(r => r.json()).then(res => {
+        if(res.status === 'success') {
+            document.getElementById('chatBox').innerHTML = '';
+             res.data.forEach(msg => {
+                 const roleClass = msg.role === 'user' ? 'user' : 'bot';
+                 const htmlContent = msg.role === 'user' ? msg.content : marked.parse(msg.content);
+                 const encodedRawStr = encodeURIComponent(msg.content);
+                 const copyBtn = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制</button>`;
+                 appendMsg(roleClass, copyBtn + htmlContent);
+             });
+        }
+    });
+}
+
+// 删除某一条会话
+function deleteSession(event, sessId) {
+    event.stopPropagation(); // 阻止触发 switchSession
+    if(!confirm("确认删除这条历史记录吗？")) return;
+    const apiKey = document.getElementById('cfgApiKey').value.trim();
+    fetch('/delete_session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ session_id: sessId, api_key: apiKey })
+    }).then(() => {
+        if(currentSessionId === sessId) createNewSession();
+        loadSessions();
+    });
+}
     </script>
 </body>
 </html>

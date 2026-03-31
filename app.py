@@ -7,7 +7,23 @@ import os
 from datetime import datetime
 import atexit
 import re
+import json # 新增依赖
+# 新增：对话数据库路径
+CHAT_DB_PATH = '/tmp/chat_data.db' if os.environ.get('VERCEL') else 'chat_data.db'
+# 新增：初始化对话数据库表结构
+def init_chat_db():
+    conn = sqlite3.connect(CHAT_DB_PATH)
+    c = conn.cursor()
+    # 会话表：由 API Key 隔离
+    c.execute('''CREATE TABLE IF NOT EXISTS sessions
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, api_key TEXT, title TEXT, updated_at DATETIME)''')
+    # 消息表：关联会话ID
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER, role TEXT, content TEXT)''')
+    conn.commit()
+    conn.close()
 
+init_chat_db()
 app = Flask(__name__)
 GLOBAL_DATA_CACHE = []
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
@@ -93,7 +109,58 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_update_data, trigger="cron", hour=9, minute=0)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown()) 
+@app.route('/get_sessions', methods=['POST'])
+def get_sessions():
+    try:
+        api_key = request.json.get('api_key', '')
+        if not api_key: 
+            return jsonify({"status": "success", "data": []})
+        
+        conn = sqlite3.connect(CHAT_DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT id, title FROM sessions WHERE api_key=? ORDER BY updated_at DESC", (api_key,))
+        rows = [{"id": r[0], "title": r[1]} for r in c.fetchall()]
+        conn.close()
+        
+        return jsonify({"status": "success", "data": rows})
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"{str(e)}"})
 
+@app.route('/get_session_history', methods=['POST'])
+def get_session_history():
+    session_id = request.json.get('session_id')
+    api_key = request.json.get('api_key')
+    
+    conn = sqlite3.connect(CHAT_DB_PATH)
+    c = conn.cursor()
+    # 安全校验：确保会话归属该密钥
+    c.execute("SELECT id FROM sessions WHERE id=? AND api_key=?", (session_id, api_key))
+    if not c.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "无权限或会话不存在"})
+        
+    c.execute("SELECT role, content FROM messages WHERE session_id=? ORDER BY id ASC", (session_id,))
+    msgs = []
+    for r in c.fetchall():
+        role = r[0]
+        content = json.loads(r[1])
+        # 若是用户上传了文件的复杂结构，提取其中的纯文本供前端展示
+        display_text = content if isinstance(content, str) else next((item['text'] for item in content if item.get('type') == 'text'), "🖼️ [包含图片/文件附件]")
+        msgs.append({"role": role, "content": display_text})
+    conn.close()
+    return jsonify({"status": "success", "data": msgs})
+
+@app.route('/delete_session', methods=['POST'])
+def delete_session():
+    session_id = request.json.get('session_id')
+    api_key = request.json.get('api_key')
+    conn = sqlite3.connect(CHAT_DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM sessions WHERE id=? AND api_key=?", (session_id, api_key))
+    c.execute("DELETE FROM messages WHERE session_id=?", (session_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -105,15 +172,14 @@ def chat():
     selected_model = data.get('model', 'gpt-3.5-turbo')
     files_to_process = data.get('files', [])  
     
-    # 【修改点2】从前端传来的 payload 中接收配置信息
     api_url = data.get('api_url') or "https://api.bankofai.io/v1/chat/completions"
     api_key = data.get('api_key') or ""
+    session_id = data.get('session_id') # 【新增】接收会话ID
 
     if not api_key:
         return jsonify({"status": "error", "reply": "⚠️ 请先在左上角设置中填写您的 API KEY。"})
 
     payload_content = []
-    
     if user_text:
         payload_content.append({"type": "text", "text": user_text})
     
@@ -123,48 +189,65 @@ def chat():
         f_content = f_info.get('content')
         
         if f_type == 'image':
-            payload_content.append({
-                "type": "image_url",
-                "image_url": {"url": f_content}
-            })
+            payload_content.append({"type": "image_url", "image_url": {"url": f_content}})
         elif f_type == 'text':
             doc_text = f_content[:30000]
-            payload_content.append({
-                "type": "text", 
-                "text": f"\n\n[用户提供的重要附件 {f_name} 的内容如下，请参考上下文回答]:\n```\n{doc_text}\n```"
-            })
+            payload_content.append({"type": "text", "text": f"\n\n[用户提供的重要附件 {f_name} 的内容如下，请参考上下文回答]:\n```\n{doc_text}\n```"})
 
     final_content = payload_content if len(payload_content) > 1 else user_text
+    current_msg = {"role": "user", "content": final_content}
     
+    # 【新增】数据库连接及上下文加载逻辑
+    conn = sqlite3.connect(CHAT_DB_PATH)
+    c = conn.cursor()
+    
+    if not session_id:
+        # 新建会话：用前15个字符当标题
+        title = user_text[:15] + "..." if user_text else "包含附件的新会话"
+        c.execute("INSERT INTO sessions (api_key, title, updated_at) VALUES (?, ?, ?)", (api_key, title, datetime.now()))
+        session_id = c.lastrowid
+    
+    # 提取过去的历史记录拼接上下文
+    c.execute("SELECT role, content FROM messages WHERE session_id=? ORDER BY id ASC", (session_id,))
+    history_messages = []
+    for row in c.fetchall():
+        history_messages.append({"role": row[0], "content": json.loads(row[1])})
+        
+    # 最终喂给大模型的完整上下文 = 历史记录 + 当前对话
+    full_messages = history_messages + [current_msg]
+
     try:
         response = requests.post(
             api_url, 
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": selected_model, 
-                "messages": [{"role": "user", "content": final_content}], 
-                "stream": False, 
-                "temperature": 0.5
-            },
+            json={"model": selected_model, "messages": full_messages, "stream": False, "temperature": 0.5},
         )
         if response.status_code == 200:
             res_json = response.json()
             reply_text = res_json['choices'][0]['message']['content']
             
-            # 【修改点3】捕获消耗 token 数量返回给前端
             total_tokens = res_json.get('usage', {}).get('total_tokens')
             if not total_tokens:
-                combined_text = user_text + reply_text
-                total_tokens = len(re.findall(r'[\u4e00-\u9fa5]|\w+|[^\w\s]', combined_text))
+                total_tokens = len(user_text) + len(reply_text)
+            
+            # 【新增】将本次对话（一问一答）写入数据库持久化
+            c.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", (session_id, "user", json.dumps(final_content)))
+            c.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", (session_id, "assistant", json.dumps(reply_text)))
+            c.execute("UPDATE sessions SET updated_at=? WHERE id=?", (datetime.now(), session_id))
+            conn.commit()
+            conn.close()
             
             return jsonify({
                 "status": "success", 
                 "reply": reply_text,
-                "tokens": total_tokens 
+                "tokens": total_tokens,
+                "session_id": session_id # 把会话ID返回前端
             })
         else:
+            conn.close()
             return jsonify({"status": "error", "reply": f"⚠️ 接口层返回错误: {response.text}"})
     except Exception as e:
+        conn.close()
         return jsonify({"status": "error", "reply": f"⚠️ 服务器连接异常: {str(e)}"})
 
 if __name__ == '__main__':
