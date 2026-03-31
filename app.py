@@ -11,27 +11,10 @@ import re
 app = Flask(__name__)
 GLOBAL_DATA_CACHE = []
 DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
-API_KEY = 'sk-6yu0ht1bqzqltkrdb373gecs7x41fd4h'
-API_URL = "https://api.bankofai.io/v1/chat/completions"
 
-# 让 Flask 放开限制，真正的拦截会被转移到前端处理，防止 Vercel 崩溃
+# 【修改点1】移除了全局写死的 API_KEY 和 API_URL
+
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS finance (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 time TEXT NOT NULL,
-                 type TEXT NOT NULL,
-                 price TEXT NOT NULL,
-                 max_price TEXT NOT NULL,
-                 change TEXT NOT NULL)''')
-    c.execute('SELECT COUNT(*) FROM finance')
-    if c.fetchone()[0] == 0:
-        fetch_and_update_data()
-    conn.commit()
-    conn.close()
 
 def fetch_and_update_data():
     global GLOBAL_DATA_CACHE
@@ -121,13 +104,19 @@ def chat():
     user_text = data.get('text', '')
     selected_model = data.get('model', 'gpt-3.5-turbo')
     files_to_process = data.get('files', [])  
+    
+    # 【修改点2】从前端传来的 payload 中接收配置信息
+    api_url = data.get('api_url') or "https://api.bankofai.io/v1/chat/completions"
+    api_key = data.get('api_key') or ""
+
+    if not api_key:
+        return jsonify({"status": "error", "reply": "⚠️ 请先在左上角设置中填写您的 API KEY。"})
 
     payload_content = []
     
     if user_text:
         payload_content.append({"type": "text", "text": user_text})
     
-    # 彻底升级：直接接收前端处理好的 Base64图片/纯文本，杜绝 Vercel 读不到 /uploads 和体积过大的 Bug
     for f_info in files_to_process:
         f_type = f_info.get('type')
         f_name = f_info.get('name')
@@ -139,7 +128,6 @@ def chat():
                 "image_url": {"url": f_content}
             })
         elif f_type == 'text':
-            # 只截取前3万字防止过曝
             doc_text = f_content[:30000]
             payload_content.append({
                 "type": "text", 
@@ -150,8 +138,8 @@ def chat():
     
     try:
         response = requests.post(
-            API_URL, 
-            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+            api_url, 
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": selected_model, 
                 "messages": [{"role": "user", "content": final_content}], 
@@ -163,6 +151,7 @@ def chat():
             res_json = response.json()
             reply_text = res_json['choices'][0]['message']['content']
             
+            # 【修改点3】捕获消耗 token 数量返回给前端
             total_tokens = res_json.get('usage', {}).get('total_tokens')
             if not total_tokens:
                 combined_text = user_text + reply_text
