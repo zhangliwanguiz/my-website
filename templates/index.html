@@ -8,7 +8,8 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-    
+    <!-- 引入 mammoth.js 用于前端纯静态解析 Word docx 文档 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
@@ -143,10 +144,21 @@
                     <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>
                 <div class="custom-select-options">
-                    <div class="custom-option" data-value="gpt-5.2"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5.2</div>
-                    <div class="custom-option active" data-value="gpt-5-nano"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5 Nano</div>
+                    <!-- <div class="custom-option" data-value="gpt-5.2"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5.2</div>
+                    <div class="custom-option active" data-value="gpt-5-nano"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5 Nano</div> -->
                 <!-- <div class="custom-option" data-value="gpt-5.2"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5.2</div> -->
-                </div>
+                <div class="custom-option" data-value="gpt-5.2"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5.2</div>
+        <div class="custom-option" data-value="gpt-5-mini"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5 Mini</div>
+        <div class="custom-option active" data-value="gpt-5-nano"><img src="https://api.iconify.design/simple-icons:openai.svg?color=%2310a37f" class="model-icon"> GPT-5 Nano</div>
+        <div class="custom-option" data-value="claude-haiku-4.5"><img src="https://api.iconify.design/simple-icons:anthropic.svg?color=%2310a37f" class="model-icon"> Claude Haiku 4.5</div>
+        <div class="custom-option" data-value="claude-sonnet-4.5"><img src="https://api.iconify.design/simple-icons:anthropic.svg?color=%2310a37f" class="model-icon"> Claude Sonnet 4.5</div>
+        <div class="custom-option" data-value="claude-sonnet-4.6"><img src="https://api.iconify.design/simple-icons:anthropic.svg?color=%2310a37f" class="model-icon"> Claude Sonnet 4.6</div>
+        <div class="custom-option" data-value="gemini-3.1-pro"><img src="https://api.iconify.design/simple-icons:google.svg?color=%2310a37f" class="model-icon"> Gemini 3.1 Pro</div>
+        <div class="custom-option" data-value="gemini-3-flash"><img src="https://api.iconify.design/simple-icons:google.svg?color=%2310a37f" class="model-icon"> Gemini 3 Flash</div>
+        <!-- <div class="custom-option" data-value="glm-5"><img src="https://api.iconify.design/simple-icons:zhipuai.svg?color=%2310a37f" class="model-icon"> GLM-5</div>
+        <div class="custom-option" data-value="kimi-k2.5"><img src="https://api.iconify.design/simple-icons:moonshotai.svg?color=%2310a37f" class="model-icon"> Kimi-K2.5</div> -->
+        <!-- <div class="custom-option" data-value="minimax-m2.5"><img src="https://api.iconify.design/simple-icons:minimax.svg?color=%2310a37f" class="model-icon"> MiniMax-M2.5</div> -->
+    </div>
             </div>
             <select id="modelSelect" style="display: none;">
                 <option value="gpt-5.2">gpt-5.2</option>
@@ -381,28 +393,54 @@
         }
         function removeAttachment(index) { window.pendingUploads.splice(index, 1); renderAttachments(); }
 
-        function handleFileUpload(event) {
+     function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
+
             const isImg = file.type.startsWith('image/');
-            const reader = new FileReader();
+            const isDocx = file.name.toLowerCase().endsWith('.docx'); // 判断是否为 Word 文档
+
             const bar = document.getElementById('uploadBar');
             document.getElementById('uploadFileName').innerText = "本地引擎解析中: " + file.name;
             bar.style.display = 'flex';
             document.getElementById('uploadProgress').style.width = '30%';
 
-            reader.onload = function(e) {
-                const content = e.target.result;
-                if (isImg) { compressImage(content, file.name, file.type); } 
-                else {
+            const reader = new FileReader();
+
+            if (isImg) {
+                // 1. 处理图片 (压缩后转 Base64)
+                reader.onload = function(e) { compressImage(e.target.result, file.name, file.type); };
+                reader.readAsDataURL(file);
+            } else if (isDocx) {
+                // 2. 处理 docx (读取为 ArrayBuffer，交由 mammoth 提取文本)
+                reader.onload = function(e) {
+                    mammoth.extractRawText({arrayBuffer: e.target.result})
+                        .then(function(result) {
+                            const text = result.value; // 提取出的纯中文/英文试卷文本
+                            document.getElementById('uploadProgress').style.width = '100%';
+                            setTimeout(() => bar.style.display = 'none', 300);
+                            window.pendingUploads.push({ name: file.name, type: 'text', content: text });
+                            renderAttachments();
+                        })
+                        .catch(function(err) {
+                            alert("Word 解析失败: " + err.message);
+                            bar.style.display = 'none';
+                        });
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                // 3. 处理普通 txt, py, csv, json 代码等 (直接当作文本读取)
+                reader.onload = function(e) {
+                    const content = e.target.result;
                     document.getElementById('uploadProgress').style.width = '100%';
                     setTimeout(() => bar.style.display = 'none', 300);
                     window.pendingUploads.push({ name: file.name, type: 'text', content: content });
                     renderAttachments();
-                }
-            };
-            if (isImg) reader.readAsDataURL(file); else reader.readAsText(file);
-            event.target.value = '';
+                };
+                reader.readAsText(file);
+            }
+            
+            event.target.value = ''; // 清空选中状态，允许重复上传同名文件
         }
 
         function compressImage(base64Str, fileName, fileType) {
