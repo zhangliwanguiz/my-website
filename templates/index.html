@@ -135,12 +135,7 @@
                 <button onclick="clearChat()" style="background:transparent; border:none; color:#ef4444; font-size:20px; padding:0 10px;" title="清屏">⟲</button>
             </div>
 
-            <!-- 【修改点1】接口参数动态绑定配置区 -->
-            <div class="setting-box" style="margin-top: 15px;">
-                <div class="nav-section" style="margin-top: 0;">API 配置 (自动保存)</div>
-                <input type="text" id="cfgApiUrl" class="setting-input" placeholder="请求地址 (默认 BankOfAI)" onchange="saveConfig()">
-                <input type="password" id="cfgApiKey" class="setting-input" placeholder="填入以 sk- 开头的密钥" onchange="saveConfig()">
-            </div>
+    
             
             <div class="custom-select-wrapper" id="customModelSelect" style="margin-top: 8px;">
                 <div class="custom-select-trigger">
@@ -173,6 +168,7 @@
                 <div class="nav-item" onclick="switchTab('xhsPage', this)">📕 小红书生成</div>
                 <div class="nav-item" onclick="switchTab('marketPage', this)">📈 资产监测</div>
                 <div class="nav-item" onclick="switchTab('mediaPage', this)">🚀 个人中心</div>
+                                <div class="nav-item" onclick="switchTab('apiPage', this)">⚙️ API地址和密钥配置</div>
             </div>
             
             <div class="nav-section">教研算法快捷指令</div>
@@ -271,13 +267,41 @@
                </p>
             </div>
         </div>
+        <!-- 新增：独立的 API 配置页 -->
+        <div class="page-content" id="apiPage" style="background:#fff;">
+            <div style="padding:40px 30px; overflow-y:auto; height: 100%;">
+                <h2 style="font-size:24px; font-weight:800; margin-bottom:10px;">⚙️ 系统与 API 配置</h2>
+                <p style="color:#64748b; font-size:14px; margin-bottom:30px;">在此处输入您的算法大模型接口及密钥，参数将自动安全地加密保存在本地浏览器中。</p>
+                
+                <div class="xhs-card">
+                    <label style="font-weight:600; font-size:14px; margin-bottom:8px; display:block;">API 请求地址</label>
+                    <input type="text" id="cfgApiUrl" class="xhs-input" placeholder="例如：https://XXX/v1/chat/completions" oninput="saveConfig()">
+                    
+                    <label style="font-weight:600; font-size:14px; margin-bottom:8px; display:block; margin-top: 20px;">您的 API KEY</label>
+                    <input type="password" id="cfgApiKey" class="xhs-input" placeholder="填入以 sk- 开头的密钥" oninput="saveConfig()">
+                    
+                    <!-- 提供视觉反馈的保存提示 -->
+                    <div id="saveTip" style="font-size:13px; color:#10b981; margin-top:15px; font-weight:600; display:none;">
+                        ✔ 配置已自动实时保存
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
         // 【新增逻辑】读取/保存 API 配置
-        function saveConfig() {
+      function saveConfig() {
             localStorage.setItem('my_api_url', document.getElementById('cfgApiUrl').value);
             localStorage.setItem('my_api_key', document.getElementById('cfgApiKey').value);
+            
+            // 触发自动保存的视觉提示
+            const tip = document.getElementById('saveTip');
+            if(tip) {
+                tip.style.display = 'block';
+                clearTimeout(window.saveTimer);
+                window.saveTimer = setTimeout(() => tip.style.display = 'none', 2000);
+            }
         }
         function loadConfig() {
             const url = localStorage.getItem('my_api_url');
