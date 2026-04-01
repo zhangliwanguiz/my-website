@@ -1,11 +1,10 @@
 from flask import Flask, jsonify, render_template, request
-from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import sqlite3
 import time
 import os
 from datetime import datetime
-import atexit
+
 import re
 import json # 新增依赖
 # 新增：对话数据库路径
@@ -25,90 +24,14 @@ def init_chat_db():
 
 init_chat_db()
 app = Flask(__name__)
-GLOBAL_DATA_CACHE = []
-DB_PATH = '/tmp/finance_data.db' if os.environ.get('VERCEL') else 'finance_data.db'
 
 # 【修改点1】移除了全局写死的 API_KEY 和 API_URL
 
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  
 
-def fetch_and_update_data():
-    global GLOBAL_DATA_CACHE
-    current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    data_list = []
-    start_time_sec = 1577836800
-    start_time_ms = 1577836800000
-    current_time_sec = int(time.time())
 
-    crypto_symbols = {"BTC(比特币)": "BTCUSDT", "TRX(波场)": "TRXUSDT"}
-    for name, symbol in crypto_symbols.items():
-        try:
-            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1M&startTime={start_time_ms}"
-            res = requests.get(url, timeout=4).json()
-            if res and isinstance(res, list):
-                highs = [float(k[2]) for k in res]
-                max_price = max(highs)
-                current_price = float(res[-1][4])
-                drawdown = ((current_price - max_price) / max_price) * 100
-                data_list.append({"时间": current_time_str, "类别": name, "价格": f"{current_price:.2f}", "最高价格": f"{max_price:.2f}", "涨跌幅": f"{drawdown:.2f}%"})
-        except:
-            data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    us_symbols = {"标普500(SPX)": "^GSPC", "纳指100(NDX)": "^NDX", "黄金(XAUT)": "XAUT-USD"}
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    for name, symbol in us_symbols.items():
-        try:
-            url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={start_time_sec}&period2={current_time_sec}&interval=1mo"
-            res = requests.get(url, headers=headers, timeout=4).json()
-            result = res.get('chart', {}).get('result', [{}])[0]
-            current_price = result.get('meta', {}).get('regularMarketPrice')
-            high_list = result.get('indicators', {}).get('quote', [{}])[0].get('high', [])
-            valid_highs = [h for h in high_list if h is not None]
-            if valid_highs and current_price:
-                max_price = max(valid_highs)
-                drawdown = ((current_price - max_price) / max_price) * 100
-                data_list.append({"时间": current_time_str, "类别": name, "价格": f"{current_price:.2f}", "最高价格": f"{max_price:.2f}", "涨跌幅": f"{drawdown:.2f}%"})
-        except:
-            data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
 
-    cn_symbols = {"红利低波ETF(159307)": ["0.159307", "1.159307"]}
-    for name, secid_list in cn_symbols.items():
-        try:
-            klines = []
-            for secid in secid_list:
-                url = f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=103&fqt=1&end=20500101&lmt=120"
-                res = requests.get(url, timeout=4).json()
-                data_obj = res.get('data')
-                if data_obj and isinstance(data_obj, dict) and data_obj.get('klines'):
-                    klines = data_obj.get('klines')
-                    break  
-            if klines:
-                highs = [float(k.split(',')[3]) for k in klines]
-                closes = [float(k.split(',')[2]) for k in klines]
-                drawdown = ((closes[-1] - max(highs)) / max(highs)) * 100
-                data_list.append({"时间": current_time_str, "类别": name, "价格": f"{closes[-1]:.4f}", "最高价格": f"{max(highs):.4f}", "涨跌幅": f"{drawdown:.2f}%"})
-        except:
-            data_list.append({"时间": current_time_str, "类别": name, "价格": "获取失败", "最高价格": "-", "涨跌幅": "-"})
-
-    GLOBAL_DATA_CACHE = data_list
-    return True, "数据刷新成功"
-
-@app.route('/get_finance_data')
-def get_finance_data():
-    global GLOBAL_DATA_CACHE
-    if not GLOBAL_DATA_CACHE:
-        return jsonify([{"时间": "-", "类别": "节点唤醒中", "价格": "-", "最高价格": "-", "涨跌幅": "请手动刷新"}])
-    return jsonify(GLOBAL_DATA_CACHE)
-
-@app.route('/refresh_data', methods=['POST'])
-def refresh_data():
-    success, msg = fetch_and_update_data()
-    return jsonify({"status": "success" if success else "error", "message": msg})
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=fetch_and_update_data, trigger="cron", hour=9, minute=0)
-scheduler.start()
-atexit.register(lambda: scheduler.shutdown()) 
 @app.route('/get_sessions', methods=['POST'])
 def get_sessions():
     try:
