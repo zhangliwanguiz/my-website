@@ -236,9 +236,14 @@ function sendMessage(customText = null) {
             finalHtml = marked.parse(rawResponse);
             const encodedRawStr = encodeURIComponent(rawResponse);
             const tokensUsed = d.tokens || 0;
-            finalHtml = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制全部</button>` 
+            // 【将其完全替换为以下代码】：
+            finalHtml = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制</button>` 
                         + finalHtml 
-                        + `<br><div class="token-block">⚡ 本次消耗 Token: <b>${tokensUsed}</b></div>`;
+                        + `<div class="msg-action-bar">
+                             <div class="token-block" style="margin-top:0;">⚡ 消耗 Token: <b>${tokensUsed}</b></div>
+                             <button class="mini-tool-btn" onclick="exportSingleMsg(this, 'pdf')" title="仅导出此条内容为PDF">📄 导出PDF</button>
+                             <button class="mini-tool-btn" onclick="exportSingleMsg(this, 'doc')" title="仅导出此条内容为Word">📝 导出Doc</button>
+                           </div>`;
         }
 
         targetBubble.innerHTML = finalHtml;
@@ -330,12 +335,22 @@ function switchSession(sessId, element) {
     }).then(r => r.json()).then(res => {
         if(res.status === 'success') {
             document.getElementById('chatBox').innerHTML = '';
-             res.data.forEach(msg => {
+              res.data.forEach(msg => {
                  const roleClass = msg.role === 'user' ? 'user' : 'bot';
                  const htmlContent = msg.role === 'user' ? msg.content : marked.parse(msg.content);
                  const encodedRawStr = encodeURIComponent(msg.content);
                  const copyBtn = `<button class="copy-all-btn" data-raw="${encodedRawStr}" onclick="copyAiFullMsg(this)">复制</button>`;
-                 appendMsg(roleClass, copyBtn + htmlContent);
+                 
+                 // 如果是 AI 的回复，加上导出栏，否则普通渲染
+                 if (msg.role === 'bot') {
+                     const actionBars = `<div class="msg-action-bar">
+                                          <button class="mini-tool-btn" onclick="exportSingleMsg(this, 'pdf')">📄 导出PDF</button>
+                                          <button class="mini-tool-btn" onclick="exportSingleMsg(this, 'doc')">📝 导出Doc</button>
+                                         </div>`;
+                     appendMsg(roleClass, copyBtn + htmlContent + actionBars);
+                 } else {
+                     appendMsg(roleClass, copyBtn + htmlContent);
+                 }
              });
         }
     });
@@ -354,4 +369,124 @@ function deleteSession(event, sessId) {
         if(currentSessionId === sessId) createNewSession();
         loadSessions();
     });
+}
+// ==================== 导出文档功能模块 ====================
+function exportChat(type) {
+    const wrappers = document.querySelectorAll('#chatBox .msg-wrapper');
+    // 如果只有预设的一条欢迎语说明没有真正对话
+    if(wrappers.length <= 1) { 
+        alert("⚠️ 当前没有可导出的对话记录！");
+        return;
+    }
+
+    // 1. 提取并清理对话内容，生成纯净版 HTML
+    let htmlContent = '<div style="font-family: Arial, Microsoft YaHei, sans-serif; color: #111827;">';
+    htmlContent += '<h2 style="text-align:center; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">AI 对话导出记录</h2>';
+    
+    wrappers.forEach(w => {
+        const isUser = w.classList.contains('user');
+        const roleName = isUser ? '我' : 'AI 助手';
+        const roleColor = isUser ? '#3b82f6' : '#10b981'; // 用户蓝，AI绿
+        
+        // 深度拷贝 DOM 节点，防止破坏当前页面UI
+        const bubbleNode = w.querySelector('.msg-bubble').cloneNode(true);
+        // 清理掉影响阅读的控件（比如复制按钮、Token消耗提示）
+        bubbleNode.querySelectorAll('.copy-all-btn, .token-block').forEach(el => el.remove());
+        
+        htmlContent += `
+        <div style="margin-bottom: 20px; page-break-inside: avoid;">
+            <div style="font-weight: bold; font-size: 16px; color: ${roleColor}; margin-bottom: 5px;">${roleName}：</div>
+            <div style="background: ${isUser ? '#f3f4f6' : '#ffffff'}; padding: 12px; border-radius: 8px; line-height: 1.6; font-size: 14px; border: ${isUser ? 'none' : '1px solid #e5e7eb'};">
+                ${bubbleNode.innerHTML}
+            </div>
+        </div>`;
+    });
+    htmlContent += '</div>';
+
+    // 2. 格式化文件名的时间戳
+    const timestamp = new Date().toLocaleDateString().replace(/\//g, '') + "_" + new Date().getHours() + new Date().getMinutes();
+    const fileName = `对话记录_${timestamp}`;
+
+    // 3. 执行导出
+    if (type === 'pdf') {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        tempDiv.style.padding = '20px';
+        
+        // 初始化 html2pdf 配置
+        html2pdf().set({
+            margin: 10,
+            filename: `${fileName}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true }, 
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(tempDiv).save();
+        
+    } else if (type === 'doc') {
+        // 构建兼容微软 Word 编码的 HTML 结构，并转为 Blob 数据流
+        const wordHtml = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>Chat Export</title></head>
+        <body>${htmlContent}</body></html>`;
+        
+        const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileName}.doc`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+// ==================== 单条 AI 回复内容导出引擎 ====================
+function exportSingleMsg(btn, type) {
+    // 1. 抓取当前按钮所在的完整对话气泡
+    const bubble = btn.closest('.msg-bubble');
+    if (!bubble) return;
+    
+    // 2. 深度克隆节点，以免破坏当前网页展示
+    const cloneNode = bubble.cloneNode(true);
+    // 剔除不需要导出的按钮和不需要的UI元素
+    cloneNode.querySelectorAll('.copy-all-btn, .msg-action-bar').forEach(el => el.remove());
+    
+    // 3. 构建供打印的干净 HTML 外壳（加入内联样式以兼容 Word/PDF）
+    const htmlContent = `
+    <div style="font-family: 'Microsoft YaHei', sans-serif; color: #111827; line-height: 1.6; font-size: 14pt;">
+        ${cloneNode.innerHTML}
+    </div>`;
+    
+    const timestamp = new Date().getTime().toString().slice(-6);
+    const fileName = `AI专项回复_${timestamp}`;
+    
+    // 4. 执行单独生成
+    if (type === 'pdf') {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        tempDiv.style.padding = '15px';
+        
+        btn.innerText = "⏳ 处理中...";
+        html2pdf().set({
+            margin: 15,
+            filename: `${fileName}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true }, 
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(tempDiv).save().then(() => {
+            btn.innerText = "📄 导出PDF";
+        });
+        
+    } else if (type === 'doc') {
+        const wordHtml = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>AI Export</title></head>
+        <body>${htmlContent}</body></html>`;
+        
+        const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileName}.doc`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
 }

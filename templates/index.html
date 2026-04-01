@@ -10,7 +10,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
     <!-- 引入 mammoth.js 用于前端纯静态解析 Word docx 文档 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- 在 head 标签内，原有的 mammoth.js 下方加入这行 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="/static/css/style.css">
+    
 </head>
 <body>
     <div class="app-container">
@@ -88,13 +91,16 @@
                         <span id="uploadPercent">0%</span>
                     </div>
                     <div id="attachmentsPreview"></div>
-                    <div class="input-area">
-                        <input type="file" id="fileInput" style="display:none;" onchange="handleFileUpload(event)">
-                        <button class="tool-btn" onclick="document.getElementById('fileInput').click()">📎</button>
-                        <button class="tool-btn" id="voiceBtn" onclick="toggleVoice()">🎙️</button>
-                        <input type="text" id="chatInput" class="chat-input" placeholder="输入需求..." onkeypress="if(event.key==='Enter')sendMessage()">
-                        <button class="btn-send" onclick="sendMessage()">发送</button>
-                    </div>
+                   <!-- 修改后：增加了两个工具按钮 📄 和 📝 -->
+    <div class="input-area">
+        <input type="file" id="fileInput" style="display:none;" onchange="handleFileUpload(event)">
+        <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="上传附件">📎</button>
+        <button class="tool-btn" id="voiceBtn" onclick="toggleVoice()" title="语音输入">🎙️</button>
+        <button class="tool-btn" onclick="exportChat('pdf')" title="导出为 PDF">📄</button>
+        <button class="tool-btn" onclick="exportChat('doc')" title="导出为 Word">📝</button>
+        <input type="text" id="chatInput" class="chat-input" placeholder="输入需求或点击话筒..." onkeypress="if(event.key==='Enter')sendMessage()">
+        <button class="btn-send" onclick="sendMessage()">发送</button>
+    </div>
                 </div>
             </div>
         </div>

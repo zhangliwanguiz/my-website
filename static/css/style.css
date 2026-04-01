@@ -130,3 +130,7 @@
 .session-item.active { background: #e0f2fe; color: #0369a1; font-weight: 600; }
 .btn-del-session { color: #ef4444; font-size: 14px; background: none; border: none; cursor: pointer; display: none; }
 .session-item:hover .btn-del-session { display: block; }
+/* 单条导出小按钮样式 */
+        .msg-action-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; border-top: 1px dashed #e2e8f0; padding-top: 8px; }
+        .mini-tool-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px; color: #64748b; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .mini-tool-btn:hover { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
