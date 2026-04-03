@@ -601,6 +601,45 @@ html, body {
 
 /* ================== 移动端适配核心修复 ================== */
 @media (max-width: 992px) {
+     /* 新增：技能子菜单在移动端的特殊处理 */
+    #skillsSubMenu {
+        display: none; /* 默认隐藏，由JS控制 */
+        width: calc(100% - 32px);
+        margin: 8px 16px 12px 16px; /* 上下边距，左右留白 */
+        padding: 8px;
+        background: rgba(59,130,246,0.03); /* 轻微背景色区分 */
+        border-radius: 8px;
+        border-left: none !important; /* 移除左边框，改用背景区分 */
+        max-height: 180px; /* 限制高度，超出可滚动 */
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 技能项在移动端的样式优化 */
+    #skillsSubMenu .skill-sub-item {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        margin-bottom: 6px;
+        border-radius: 8px;
+        padding: 10px 12px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    
+    #skillsSubMenu .skill-sub-item:last-child {
+        margin-bottom: 0;
+    }
+    
+    #skillsSubMenu .skill-sub-item:active {
+        background: #eff6ff;
+        transform: scale(0.98);
+    }
+    
+    /* 隐藏默认的提示文字样式（解锁后会被替换） */
+    #skillsSubMenu > div:first-child {
+        text-align: center;
+        padding: 16px;
+        color: #9ca3af;
+    }
     .app-container { 
         flex-direction: column; 
         height: 100dvh; /* 确保使用动态视口高度 */
