@@ -134,3 +134,40 @@
         .msg-action-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; border-top: 1px dashed #e2e8f0; padding-top: 8px; }
         .mini-tool-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px; color: #64748b; font-weight: 600; cursor: pointer; transition: 0.2s; }
         .mini-tool-btn:hover { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
+
+/* 技能中心子菜单样式优化 */
+#skillsSubMenu {
+    margin-top: 4px;
+}
+
+#skillsSubMenu .nav-item {
+    position: relative;
+    border-left: none;
+    margin-left: 0;
+    opacity: 0.9;
+}
+
+#skillsSubMenu .nav-item::before {
+    content: "";
+    position: absolute;
+    left: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    background: #cbd5e1;
+    border-radius: 50%;
+}
+
+#skillsSubMenu .nav-item:hover::before {
+    background: #3b82f6;
+}
+
+.skill-master {
+    border: 1px dashed #cbd5e1;
+}
+
+.skill-master:hover {
+    border-color: #3b82f6;
+    background: #f8fafc;
+}

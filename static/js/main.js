@@ -3,35 +3,7 @@
     let currentSessionId = null;
         // 【新增逻辑】读取/保存 API 配置
 
-// --- 👇 新增：模块 Skill 提示词配置 👇 ---
-const SKILLS = {
-    chat: "", // 默认普通对话为空
-    audit: "请你输出a+b的c++代码。",
-    exam: "你现在是一名顶级的算法与编程教研主管。你需要根据用户提供的知识点或学情要求，设计高质量的标准化试卷（包括单选、填空、阅读程序、编程大题等），必须附带详细的标准答案和解析。"
-};
 
-let currentMode = 'chat'; // 默认模式
-
-// 新增切换模块逻辑
-function switchMode(mode, element) {
-    currentMode = mode;
-    
-    // 切换 UI 激活状态
-    document.querySelectorAll('.mobile-nav-scroll .nav-item').forEach(n => n.classList.remove('active'));
-    element.classList.add('active');
-    switchTab('chatPage', element);
-
-    // 切换模块时强制开启新独立会话，防止污染不同设定的记忆
-    createNewSession();
-    
-    // 改变欢迎语
-    let welcomeMsg = "已进入普通对话终端。";
-    if (mode === 'audit') welcomeMsg = "🛠️ 已开启【审核模块】。请发送需要审核的代码或文档。";
-    if (mode === 'exam') welcomeMsg = "📝 已开启【出卷模块】。请输入考点、难度或受众信息。";
-    
-    document.getElementById('chatBox').innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">${welcomeMsg}</div></div>`;
-}
-// --- 👆 新增结束skill 👆 ---
  function saveConfig() {
     localStorage.setItem('my_api_url', document.getElementById('cfgApiUrl').value);
     localStorage.setItem('my_api_key', document.getElementById('cfgApiKey').value);
@@ -245,7 +217,7 @@ function sendMessage(customText = null) {
             api_key: document.getElementById('cfgApiKey').value.trim(),
             session_id: currentSessionId, // 【关键新增】：告诉后端当前是在哪个会话聊天
                  // 👇 新增这一行：将当前模式的预设指令发给后端
-            system_skill: SKILLS[currentMode] 
+            system_skill: getCurrentSkillPrompt()
         })
     })
     .then(r => r.json())
