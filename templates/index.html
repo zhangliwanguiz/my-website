@@ -63,29 +63,26 @@
             </select>
 
 <div class="mobile-nav-scroll" style="margin-top: 5px;">
-    <!-- 普通对话 -->
     <div class="nav-item active" onclick="switchMode('chat', this)">
         <span style="margin-right:8px;">💻</span>对话终端
     </div>
     
-    <!-- 技能中心（带锁） -->
+    <!-- 技能中心 -->
     <div class="nav-item skill-master" id="skillCenterBtn" 
          onclick="unlockSkills(this)" 
-         style="border:1px dashed #cbd5e1; background:#fafafa; position:relative;">
+         style="border:1px dashed #cbd5e1; background:#fafafa;">
         <span style="margin-right:8px;">🔒</span>
         <span>技能中心</span>
-        <span id="skillLockStatus" style="margin-left:auto; font-size:11px; color:#9ca3af; font-weight:600;">锁定</span>
+        <span style="margin-left:auto; font-size:11px; color:#9ca3af;">锁定</span>
     </div>
     
-    <!-- 技能子菜单容器（动态填充） -->
-    <div id="skillsSubMenu" style="display:none; padding-left:12px; margin-left:8px; margin-bottom:6px; border-left:2px solid #e5e7eb;">
-        <!-- 技能文件加载后会自动渲染在这里 -->
+    <!-- 动态技能列表容器 -->
+    <div id="skillsSubMenu" style="display:none; padding-left:12px; margin-left:8px; border-left:2px solid #e5e7eb;">
         <div style="font-size:12px; color:#9ca3af; padding:10px; font-style:italic;">
             🔐 请先解锁技能中心...
         </div>
     </div>
     
-    <!-- API 配置 -->
     <div class="nav-item" onclick="switchTab('apiPage', this)">
         <span style="margin-right:8px;">⚙️</span>API配置
     </div>

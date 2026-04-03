@@ -1,8 +1,30 @@
 
         // 【新增】全局变量，用于记录当前的会话ID
-    let currentSessionId = null;
-        // 【新增逻辑】读取/保存 API 配置
+let currentSessionId = null;
+// 竞赛技能状态管理
+window.cfState = {
+    currentProblem: null,  // 当前绑定的题目
+    ratingMin: 1400,
+    ratingMax: 1600
+};
 
+// 全局函数供调用
+window.activateSkillById = function(skillId) {
+    document.getElementById('chatInput').value = ''; // 清空输入
+    document.getElementById('slashMenu').style.display = 'none';
+    
+    // 触发技能切换（复用现有逻辑）
+    if (typeof SkillManager !== 'undefined') {
+        SkillManager.activateSkill(skillId);
+    } else if (typeof switchMode === 'function') {
+        // 兼容旧版
+        const map = { 'chat': 'chat', 'audit': 'audit', 'exam': 'exam' };
+        if (map[skillId]) {
+            // 找到对应的nav-item模拟点击，或直接调用
+            console.log('Switching to skill:', skillId);
+        }
+    }
+};
 
  function saveConfig() {
     localStorage.setItem('my_api_url', document.getElementById('cfgApiUrl').value);
@@ -186,7 +208,49 @@ function sendMessage(customText = null) {
     const input = document.getElementById('chatInput');
     const txt = customText || input.value.trim(); 
     if(!txt && window.pendingUploads.length === 0) return;
+    // ===== 处理 /daily 命令 =====
+    if (txt === '/daily') {
+        input.value = '';
+        handleDailyCommand(false); // false = 不强制刷新
+        return;
+    }
     
+    if (txt === '/daily new' || txt === '/daily refresh') {
+        input.value = '';
+        handleDailyCommand(true); // true = 强制刷新
+        return;
+    }
+    
+    // ===== 新增：检测 /daily 命令 =====
+    if (txt === '/daily' && currentSkillId === 'competition') {
+        input.value = ''; // 清空输入
+        // 显示加载中
+        const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">🏆 正在从 Codeforces 获取今日推荐...</span>');
+        
+        // 调用后端接口
+        const rating_min = window.cf_rating_min || 1400;
+        const rating_max = window.cf_rating_max || 1600;
+        
+        fetch('/cf_daily', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rating_min, rating_max})
+        })
+        .then(r => r.json())
+        .then(data => {
+            loadingMsg.remove(); // 移除加载提示
+            if (data.status === 'success') {
+                renderDailyProblemCard(data.problem);
+            } else {
+                appendMsg('bot', `<div style="color:#ef4444;">❌ 获取失败：${data.message}</div>`);
+            }
+        })
+        .catch(err => {
+            loadingMsg.remove();
+            appendMsg('bot', `<div style="color:#ef4444;">❌ 网络错误：${err.message}</div>`);
+        });
+        return; // 阻止继续发送到 AI
+    }
     let userDisplay = txt;
     if(window.pendingUploads.length > 0) {
         const attachNames = window.pendingUploads.map(f => `[${f.name}]`).join(' ');
@@ -205,19 +269,37 @@ function sendMessage(customText = null) {
     const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">云端运算中...</span>');
     const targetBubble = loadingMsg.querySelector('.msg-bubble');
 
-    // 【修改点：核心请求逻辑】
+  // ===== 关键：构建增强的 system_skill =====
+    let enhancedSystemSkill = getCurrentSkillPrompt();
+    
+    // 如果是竞赛技能且当前有绑定题目，附加上下文
+    if (currentSkillId === 'competition' && window.cfState.currentProblem) {
+        const p = window.cfState.currentProblem;
+        enhancedSystemSkill += `
+
+【重要：当前讨论的题目上下文】
+题号：Codeforces ${p.contestId}${p.index} - ${p.name}
+难度：${p.difficulty_emoji} Rating ${p.rating} (${p.difficulty_label})
+算法标签：${p.tags.join(', ')}
+题目链接：${p.url}
+
+【指令】
+用户说"这题"、"这道题"、"帮我解决"时，指的就是上面的 Codeforces 题目。请基于该题的难度和标签给出针对性建议。
+`;
+    }
+    
+    // ... 发送 fetch ...
     fetch('/chat', {
-        method: 'POST', 
+        method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ 
             text: txt, 
-            model: document.getElementById('modelSelect').value, 
+            model: document.getElementById('modelSelect').value,
             files: filesDataPayload,
             api_url: document.getElementById('cfgApiUrl').value.trim(),  
             api_key: document.getElementById('cfgApiKey').value.trim(),
-            session_id: currentSessionId, // 【关键新增】：告诉后端当前是在哪个会话聊天
-                 // 👇 新增这一行：将当前模式的预设指令发给后端
-            system_skill: getCurrentSkillPrompt()
+            session_id: currentSessionId,
+            system_skill: enhancedSystemSkill  // 使用增强后的 prompt
         })
     })
     .then(r => r.json())
@@ -252,6 +334,7 @@ function sendMessage(customText = null) {
         requestAnimationFrame(() => { const box = document.getElementById('chatBox'); box.scrollTop = box.scrollHeight; });
     }).catch(err => { targetBubble.innerHTML = "⚠️ 网络或接口异常。"; });
 }
+
        
         function copyAiFullMsg(btn) {
             const str = decodeURIComponent(btn.getAttribute('data-raw'));
@@ -492,3 +575,206 @@ function exportSingleMsg(btn, type) {
         document.body.removeChild(link);
     }
 }
+// 快捷发送函数（供技能系统调用）
+window.sendQuickPrompt = function(text) {
+    document.getElementById('chatInput').value = text;
+    sendMessage();
+};
+
+// 设置 CF 难度范围并刷新每日一题
+window.setCFRange = function(min, max) {
+    window.cf_rating_min = min;
+    window.cf_rating_max = max;
+    showToast(`已设置难度范围：${min}-${max}`);
+    
+    // 如果当前在竞赛技能，自动获取新题
+    if (currentSkillId === 'competition') {
+        // 触发获取（通过发送命令或调用方法）
+        fetch('/cf_daily', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rating_min: min, rating_max: max})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                renderDailyProblemCard(data.problem);
+            }
+        });
+    }
+};
+
+// 全局 Toast 提示（简单版）
+window.showToast = function(msg, duration=2000) {
+    const div = document.createElement('div');
+    div.style.cssText = `
+        position: fixed; top: 20px; right: 20px; 
+        background: #1f2937; color: white; 
+        padding: 12px 20px; border-radius: 8px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+        z-index: 1000; font-size: 13px;
+        animation: slideIn 0.3s ease;
+    `;
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), duration);
+};
+
+// 渲染每日一题卡片到聊天框（全局可用）
+window.renderDailyProblemCard = function(p) {
+    const chatBox = document.getElementById('chatBox');
+    if (!chatBox) return;
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper bot';
+    wrapper.style.animation = 'fadeIn 0.5s ease';
+    
+    wrapper.innerHTML = `
+        <div class="avatar bot">🏆</div>
+        <div class="msg-bubble" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; max-width: 100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:8px;">
+                <div style="font-weight:700; font-size:15px;">📅 今日 Codeforces 推荐</div>
+                <span style="background:rgba(255,255,255,0.2); padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${p.difficulty_emoji} ${p.rating}</span>
+            </div>
+            
+            <div style="font-weight:600; font-size:16px; margin-bottom:8px; line-height:1.4;">
+                ${p.name}
+            </div>
+            
+            <div style="opacity:0.95; margin-bottom:12px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px;">
+                ${p.tags.map(tag => `<span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; font-size:11px;">${tag}</span>`).join('')}
+            </div>
+            
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                <a href="${p.url}" target="_blank" style="background:rgba(255,255,255,0.95); color:#764ba2; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px;">
+                    🔗 打开题目
+                </a>
+                <button onclick="sendQuickPrompt('请帮我分析 CF ${p.contestId}${p.index} 的解法，题目：${p.name}，难度${p.rating}')" 
+                        style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+                    💡 获取题解
+                </button>
+                <button onclick="window.open('https://codeforces.com/contest/${p.contestId}/submission', '_blank')"
+                        style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+                    👥 查看题解区
+                </button>
+            </div>
+            
+            <div style="margin-top:10px; font-size:11px; opacity:0.7; text-align:right;">
+                题目编号: ${p.contestId}${p.index} | 通过人数: ${p.solved_count}
+            </div>
+        </div>
+    `;
+    
+    // 插入到聊天框末尾
+    chatBox.appendChild(wrapper);
+    chatBox.scrollTop = chatBox.scrollHeight;
+};
+// 处理 /daily 命令
+async function handleDailyCommand(forceRefresh = false) {
+    const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">🏆 正在从 Codeforces 获取' + (forceRefresh ? '新' : '今日') + '推荐...</span>');
+    
+    try {
+        const res = await fetch('/cf_daily', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                rating_min: window.cfState.ratingMin,
+                rating_max: window.cfState.ratingMax,
+                refresh: forceRefresh,
+                session_id: currentSessionId || 'default'
+            })
+        });
+        
+        const data = await res.json();
+        loadingMsg.remove();
+        
+        if (data.status === 'success') {
+            // 保存到全局状态
+            window.cfState.currentProblem = data.problem;
+            // 渲染卡片
+            renderDailyProblemCard(data.problem, true); // true = 显示"当前讨论"
+        } else {
+            appendMsg('bot', `❌ 获取失败：${data.message}`);
+        }
+    } catch (err) {
+        loadingMsg.remove();
+        appendMsg('bot', `❌ 网络错误`);
+    }
+}
+
+// 修改 renderDailyProblemCard，增加"当前题目"视觉提示
+window.renderDailyProblemCard = function(p, isCurrent = false) {
+    const chatBox = document.getElementById('chatBox');
+    if (!chatBox) return;
+    
+    // 如果是新题目，移除旧的"当前题目"标记
+    if (isCurrent) {
+        document.querySelectorAll('.cf-current-marker').forEach(el => el.remove());
+    }
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper bot';
+    if (isCurrent) wrapper.classList.add('cf-current-marker');
+    wrapper.style.animation = 'fadeIn 0.5s ease';
+    
+    const currentBadge = isCurrent ? 
+        `<div style="position:absolute; top:-8px; left:-8px; background:#10b981; color:white; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">当前题目</div>` : '';
+    
+    wrapper.innerHTML = `
+        <div class="avatar bot">🏆</div>
+        <div class="msg-bubble" style="position:relative; ${isCurrent ? 'border:2px solid #10b981;' : ''} background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; max-width: 100%;">
+            ${currentBadge}
+            <!-- 原有卡片内容 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:8px;">
+                <div style="font-weight:700; font-size:15px;">📅 ${isCurrent ? '当前推荐' : 'Codeforces 推荐'}</div>
+                <span style="background:rgba(255,255,255,0.2); padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${p.difficulty_emoji} ${p.rating}</span>
+            </div>
+            
+            <div style="font-weight:600; font-size:16px; margin-bottom:8px; line-height:1.4;">
+                ${p.name}
+            </div>
+            
+            <div style="opacity:0.95; margin-bottom:12px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px;">
+                ${p.tags.map(tag => `<span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; font-size:11px;">${tag}</span>`).join('')}
+            </div>
+            
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                <a href="${p.url}" target="_blank" style="background:rgba(255,255,255,0.95); color:#764ba2; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:600; font-size:12px;">
+                    🔗 打开题目
+                </a>
+                <button onclick="startSolvingThis()" style="background:#10b981; border:none; color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+                    🚀 解决这题
+                </button>
+                <button onclick="sendQuickPrompt('/daily new')" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+                    🔄 换一题
+                </button>
+            </div>
+        </div>
+    `;
+    
+    chatBox.appendChild(wrapper);
+    chatBox.scrollTop = chatBox.scrollHeight;
+};
+
+// 一键开始解决当前题目
+window.startSolvingThis = function() {
+    if (!window.cfState.currentProblem) {
+        alert('先获取题目推荐');
+        return;
+    }
+    const p = window.cfState.currentProblem;
+    const prompt = `请帮我分析并解决这道题：Codeforces ${p.contestId}${p.index} ${p.name}。
+
+题目信息：
+- 难度：Rating ${p.rating}
+- 标签：${p.tags.join(', ')}
+- 链接：${p.url}
+
+请提供：
+1. 题意理解
+2. 算法思路
+3. 关键代码实现（C++17）
+4. 复杂度分析`;
+    
+    sendQuickPrompt(prompt);
+};
