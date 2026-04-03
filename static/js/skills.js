@@ -1,142 +1,228 @@
 /**
- * 技能模块独立配置文件 - 层级版本
- * 增加技能中心概念：先验证总密码查看技能列表，再验证各自密码使用技能
+ * Skill Center Manager (插件化技能系统)
+ * 架构说明：
+ * 1. 每个技能是独立文件，放在 /skills/ 文件夹
+ * 2. 技能文件通过 window.SkillRegistry 注册
+ * 3. 系统运行时动态扫描并加载技能列表
+ * 4. 支持双层密码：查看技能中心 + 使用具体技能
  */
 
-// ========== 技能中心配置（查看技能列表的密码） ==========
+// ==================== 技能中心配置 ====================
 const SKILL_CENTER = {
-    // 总密码Base64，默认"123456" -> MTIzNDU2
-    // 如需修改：在浏览器控制台运行 btoa("你的密码") 替换此处
+    // 查看技能列表的总密码（默认: 123456）
     passwordHash: "MTIzNDU2",
-    title: "技能中心",
-    isUnlocked: false  // 状态：是否已解锁查看列表
+    title: "🔒 技能中心",
+    isUnlocked: false,
+    // 需要加载的技能文件列表（相对 /static/js/skills/ 路径）
+    skillModules: ['audit.js', 'exam.js']
 };
 
-// ========== 各技能详细配置 ==========
-const SKILL_CONFIG = {
-    chat: {
-        isSkill: false,
-        title: "普通对话",
-        welcomeMsg: "已进入普通对话终端。"
+// ==================== 技能注册表（由各个技能文件填充） ====================
+window.SkillRegistry = window.SkillRegistry || {};
+
+// ==================== 当前激活状态 ====================
+let currentSkillId = 'chat'; // 默认普通对话
+let loadedSkills = []; // 已加载的技能元数据缓存
+
+// ==================== 核心管理器 ====================
+const SkillManager = {
+    
+    /**
+     * 初始化：解锁技能中心后调用，加载所有技能文件
+     */
+    async loadAllSkills() {
+        const loadPromises = SKILL_CENTER.skillModules.map(filename => this.loadSkillFile(filename));
+        await Promise.all(loadPromises);
+        this.renderSkillList();
     },
-    // 审核模块
-    audit: {
-        isSkill: true,
-        title: "审核模块",
-        passwordHash: "MTIzNDU2", // 使用密码：123456
-        prompt: "请你输出a+b的c++代码。",
-        welcomeMsg: "🛠️ 已开启【审核模块】。请发送需要审核的代码或文档。"
+
+    /**
+     * 动态加载单个技能文件（创建 script 标签）
+     */
+    loadSkillFile(filename) {
+        return new Promise((resolve, reject) => {
+            // 检查是否已加载
+            if (document.querySelector(`script[data-skill="${filename}"]`)) {
+                resolve();
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = `/static/js/skills/${filename}`;
+            script.setAttribute('data-skill', filename);
+            script.onload = () => {
+                console.log(`[SkillManager] 技能模块加载成功: ${filename}`);
+                resolve();
+            };
+            script.onerror = () => {
+                console.error(`[SkillManager] 技能模块加载失败: ${filename}`);
+                resolve(); // 失败也继续，不阻断其他技能
+            };
+            document.head.appendChild(script);
+        });
     },
-    // 出卷模块
-    exam: {
-        isSkill: true,
-        title: "出卷模块",
-        passwordHash: "ODg4ODg4", // 使用密码：888888
-        prompt: "你现在是一名顶级的算法与编程教研主管。你需要根据用户提供的知识点或学情要求，设计高质量的标准化试卷（包括单选、填空、阅读程序、编程大题等），必须附带详细的标准答案和解析。",
-        welcomeMsg: "📝 已开启【出卷模块】。请输入考点、难度或受众信息。"
-    }
-};
 
-let currentMode = 'chat'; // 当前激活的模式
-
-// ========== 第一层：解锁技能中心（查看技能列表） ==========
-function unlockSkills(element) {
-    // 如果已经解锁，则切换显示/隐藏子菜单
-    if (SKILL_CENTER.isUnlocked) {
-        toggleSkillsMenu();
-        return;
-    }
-    
-    // 要求输入技能中心密码
-    const pwdInput = prompt(`🔐 ${SKILL_CENTER.title}\n\n请输入访问密码以查看可用技能列表：`);
-    if (pwdInput === null) return; // 用户取消
-    
-    // 验证密码
-    if (btoa(pwdInput) !== SKILL_CENTER.passwordHash) {
-        alert("❌ 密码错误，无法查看技能列表！");
-        return;
-    }
-    
-    // 验证通过，解锁并展开
-    SKILL_CENTER.isUnlocked = true;
-    
-    // 修改UI显示为已解锁状态
-    element.querySelector('span:first-child').textContent = "🔓";
-    element.querySelector('.lock-icon-emoji').textContent = "✓";
-    element.style.color = "#0369a1";
-    element.style.background = "#f0f9ff";
-    
-    // 展开子菜单
-    const subMenu = document.getElementById('skillsSubMenu');
-    if (subMenu) {
-        subMenu.style.display = 'block';
-        // 添加展开动画效果
-        subMenu.style.opacity = '0';
-        setTimeout(() => {
-            subMenu.style.transition = 'opacity 0.3s';
-            subMenu.style.opacity = '1';
-        }, 10);
-    }
-}
-
-// 切换子菜单显示/隐藏（已解锁状态下点击）
-function toggleSkillsMenu() {
-    const subMenu = document.getElementById('skillsSubMenu');
-    if (subMenu) {
-        if (subMenu.style.display === 'none') {
-            subMenu.style.display = 'block';
-        } else {
-            subMenu.style.display = 'none';
+    /**
+     * 解析已注册的技能，提取元数据
+     */
+    parseSkills() {
+        loadedSkills = [];
+        for (const [id, skillData] of Object.entries(window.SkillRegistry)) {
+            if (skillData && skillData.metadata) {
+                loadedSkills.push({
+                    id: id,
+                    name: skillData.metadata.name || id,
+                    icon: skillData.metadata.icon || '🔧',
+                    description: skillData.metadata.description || '',
+                    passwordHash: skillData.metadata.passwordHash || '',
+                    prompt: skillData.prompt || '',
+                    version: skillData.metadata.version || '1.0'
+                });
+            }
         }
-    }
-}
+        // 按名称排序
+        loadedSkills.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+        return loadedSkills;
+    },
 
-// ========== 第二层：切换具体技能（使用各自密码） ==========
-function switchSkillMode(mode, element) {
-    const config = SKILL_CONFIG[mode];
-    if (!config) return;
+    /**
+     * 渲染技能列表到侧边栏
+     */
+    renderSkillList() {
+        this.parseSkills();
+        const container = document.getElementById('skillsSubMenu');
+        if (!container) return;
 
-    // 二次验证：使用具体技能的独立密码
-    // if (config.isSkill) {
-    //     const pwdInput = prompt(`🔐 技能解锁：${config.title}\n\n请输入该技能的专属密码以激活使用：`);
-    //     if (pwdInput === null) return;
+        // 清空并重新渲染
+        container.innerHTML = '';
         
-    //     if (btoa(pwdInput) !== config.passwordHash) {
-    //         alert("❌ 密码错误，无法激活该技能！");
-    //         return;
-    //     }
-    // }
+        loadedSkills.forEach(skill => {
+            const skillEl = document.createElement('div');
+            skillEl.className = 'nav-item skill-sub-item';
+            skillEl.setAttribute('data-skill-id', skill.id);
+            skillEl.style.cssText = 'font-size:13px; padding:8px 12px; margin-bottom:4px; background:rgba(59,130,246,0.05); display:flex; align-items:center;';
+            skillEl.innerHTML = `
+                <span style="margin-right:8px; font-size:14px;">${skill.icon}</span>
+                <div style="flex:1; overflow:hidden;">
+                    <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${skill.name}</div>
+                    <div style="font-size:11px; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${skill.description}</div>
+                </div>
+            `;
+            skillEl.onclick = () => this.activateSkill(skill.id, skillEl);
+            container.appendChild(skillEl);
+        });
+    },
 
-    currentMode = mode;
-    
-    // 更新UI激活状态
-    document.querySelectorAll('.mobile-nav-scroll .nav-item').forEach(n => {
-        // 仅清除同级和子级的active，保留技能中心本身的状态
-        if (!n.classList.contains('skill-master')) {
-            n.classList.remove('active');
+    /**
+     * 激活指定技能（带密码验证）
+     */
+    activateSkill(skillId, element) {
+        const skill = loadedSkills.find(s => s.id === skillId);
+        if (!skill) return;
+
+        // 验证该技能的独立密码
+        if (skill.passwordHash) {
+            const pwd = prompt(`🔐 激活【${skill.name}】\n\n${skill.description}\n\n请输入该技能密码：`);
+            if (pwd === null) return;
+            if (btoa(pwd) !== skill.passwordHash) {
+                alert("❌ 密码错误，无法激活此技能");
+                return;
+            }
         }
-    });
-    element.classList.add('active');
-    
-    // 调用主逻辑
-    if (typeof switchTab === 'function') switchTab('chatPage', element);
-    if (typeof createNewSession === 'function') createNewSession();
-    
-    // 更新欢迎语
-    const chatBox = document.getElementById('chatBox');
-    if (chatBox) {
-        chatBox.innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">${config.welcomeMsg}</div></div>`;
+
+        currentSkillId = skillId;
+        
+        // UI 状态更新
+        document.querySelectorAll('.skill-sub-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        
+        // 同步 main.js 的 currentMode 变量（兼容性）
+        if (typeof currentMode !== 'undefined') currentMode = skillId;
+        
+        // 触发主系统切换
+        if (typeof switchTab === 'function') switchTab('chatPage', element);
+        if (typeof createNewSession === 'function') createNewSession();
+        
+        // 更新欢迎语
+        const welcome = `🎯 已激活【${skill.name}】v${skill.version}\n\n${skill.description}`;
+        const chatBox = document.getElementById('chatBox');
+        if (chatBox) {
+            chatBox.innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble" style="white-space:pre-line;">${welcome}</div></div>`;
+        }
+    },
+
+    /**
+     * 获取当前技能的 Prompt（供 main.js 调用）
+     */
+    getCurrentPrompt() {
+        if (currentSkillId === 'chat') return '';
+        const skill = window.SkillRegistry[currentSkillId];
+        return skill ? (skill.prompt || '') : '';
+    },
+
+    /**
+     * 查看技能中心（第一层密码）
+     */
+    unlock(element) {
+        if (SKILL_CENTER.isUnlocked) {
+            this.toggleMenu();
+            return;
+        }
+
+        const pwd = prompt(`🔐 ${SKILL_CENTER.title}\n\n请输入管理密码查看技能库：`);
+        if (!pwd) return;
+
+        if (btoa(pwd) === SKILL_CENTER.passwordHash) {
+            SKILL_CENTER.isUnlocked = true;
+            element.innerHTML = `<span style="margin-right:8px;">🔓</span><span>技能中心</span><span style="margin-left:auto; font-size:11px; color:#10b981;">已解锁</span>`;
+            element.classList.add('skill-unlocked');
+            this.loadAllSkills(); // 加载所有技能文件
+            this.expandMenu();
+        } else {
+            alert("❌ 密码错误，无法访问技能库");
+        }
+    },
+
+    toggleMenu() {
+        const menu = document.getElementById('skillsSubMenu');
+        if (menu) {
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+    },
+
+    expandMenu() {
+        const menu = document.getElementById('skillsSubMenu');
+        if (menu) {
+            menu.style.display = 'block';
+            menu.style.opacity = '0';
+            setTimeout(() => {
+                menu.style.transition = 'opacity 0.3s';
+                menu.style.opacity = '1';
+            }, 10);
+        }
     }
+};
+
+// ==================== 全局 API 暴露 ====================
+
+// 供 index.html 的 onclick 调用
+function unlockSkills(element) {
+    SkillManager.unlock(element);
 }
 
-// 保留原函数名供兼容性调用（直接点击对话终端时使用）
+// 供 main.js 获取 prompt
+function getCurrentSkillPrompt() {
+    return SkillManager.getCurrentPrompt();
+}
+
+// 兼容原 switchMode（普通对话）
 function switchMode(mode, element) {
     if (mode === 'chat') {
-        const config = SKILL_CONFIG[mode];
-        currentMode = mode;
+        currentSkillId = 'chat';
+        if (typeof currentMode !== 'undefined') currentMode = 'chat';
         
         document.querySelectorAll('.mobile-nav-scroll .nav-item').forEach(n => {
-            if (!n.classList.contains('skill-master')) n.classList.remove('active');
+            if (!n.id?.includes('skill')) n.classList.remove('active');
         });
         element.classList.add('active');
         
@@ -145,12 +231,9 @@ function switchMode(mode, element) {
         
         const chatBox = document.getElementById('chatBox');
         if (chatBox) {
-            chatBox.innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">${config.welcomeMsg}</div></div>`;
+            chatBox.innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">已进入普通对话终端。</div></div>`;
         }
     }
 }
 
-// 暴露给 main.js 获取当前 system prompt
-function getCurrentSkillPrompt() {
-    return SKILL_CONFIG[currentMode]?.prompt || "";
-}
+console.log('[SkillManager] 技能中心管理器已加载，等待解锁...');

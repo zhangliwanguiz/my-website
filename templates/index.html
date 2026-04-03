@@ -62,27 +62,33 @@
                 <option value="minimax-m2.5">MiniMax-M2.5</option>
             </select>
 
-      <div class="mobile-nav-scroll" style="margin-top: 5px;">
-    <div class="nav-item active" onclick="switchMode('chat', this)">💻 对话终端</div>
-    
-    <!-- 技能中心主入口（带锁） -->
-    <div class="nav-item skill-master" onclick="unlockSkills(this)" style="position: relative; display: flex; align-items: center;">
-        <span style="margin-right: 8px;">🔒</span> 
-        <span>Skills 技能中心</span>
-        <span class="lock-icon-emoji" style="margin-left: auto; font-size: 11px; opacity: 0.6;">🔐</span>
+<div class="mobile-nav-scroll" style="margin-top: 5px;">
+    <!-- 普通对话 -->
+    <div class="nav-item active" onclick="switchMode('chat', this)">
+        <span style="margin-right:8px;">💻</span>对话终端
     </div>
     
-    <!-- 技能子菜单（默认隐藏，验证后展开） -->
-    <div id="skillsSubMenu" style="display: none; padding-left: 12px; border-left: 2px solid #e5e7eb; margin-left: 8px; margin-bottom: 6px;">
-        <div class="nav-item skill-sub-item" onclick="switchSkillMode('audit', this)" style="font-size: 13px; padding: 8px 12px; margin-bottom: 4px; background: rgba(59, 130, 246, 0.05);">
-            <span style="margin-right: 6px;">🛡️</span>审核模块
-        </div>
-        <div class="nav-item skill-sub-item" onclick="switchSkillMode('exam', this)" style="font-size: 13px; padding: 8px 12px; margin-bottom: 4px; background: rgba(59, 130, 246, 0.05);">
-            <span style="margin-right: 6px;">📝</span>出卷模块
+    <!-- 技能中心（带锁） -->
+    <div class="nav-item skill-master" id="skillCenterBtn" 
+         onclick="unlockSkills(this)" 
+         style="border:1px dashed #cbd5e1; background:#fafafa; position:relative;">
+        <span style="margin-right:8px;">🔒</span>
+        <span>技能中心</span>
+        <span id="skillLockStatus" style="margin-left:auto; font-size:11px; color:#9ca3af; font-weight:600;">锁定</span>
+    </div>
+    
+    <!-- 技能子菜单容器（动态填充） -->
+    <div id="skillsSubMenu" style="display:none; padding-left:12px; margin-left:8px; margin-bottom:6px; border-left:2px solid #e5e7eb;">
+        <!-- 技能文件加载后会自动渲染在这里 -->
+        <div style="font-size:12px; color:#9ca3af; padding:10px; font-style:italic;">
+            🔐 请先解锁技能中心...
         </div>
     </div>
     
-    <div class="nav-item" onclick="switchTab('apiPage', this)">⚙️ API配置</div>
+    <!-- API 配置 -->
+    <div class="nav-item" onclick="switchTab('apiPage', this)">
+        <span style="margin-right:8px;">⚙️</span>API配置
+    </div>
 </div>
 <div class="nav-section" style="display:flex; justify-content:space-between; align-items:center;">
     <span>历史会话</span>
