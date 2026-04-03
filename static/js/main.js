@@ -258,7 +258,7 @@ function sendMessage(customText = null) {
     }
 
     const encodedUserText = encodeURIComponent(txt || window.pendingUploads.map(f => f.name).join(' '));
-    const finalUserHtml = `<button class="copy-all-btn" data-raw="${encodedUserText}" onclick="copyFullMsg(this)">复制全部</button>` + userDisplay;
+    const finalUserHtml = `<button class="copy-all-btn" data-raw="${encodedUserText}" onclick="copyFullMsg(this)">复制</button>` + userDisplay;
     appendMsg('user', finalUserHtml);
     if(!customText) input.value = '';
     
@@ -338,7 +338,7 @@ function sendMessage(customText = null) {
        
         function copyAiFullMsg(btn) {
             const str = decodeURIComponent(btn.getAttribute('data-raw'));
-            navigator.clipboard.writeText(str).then(() => { btn.innerText="成功✓"; setTimeout(()=>btn.innerText="复制全部", 2000); });
+            navigator.clipboard.writeText(str).then(() => { btn.innerText="成功✓"; setTimeout(()=>btn.innerText="复制", 2000); });
         }
         function copyFullMsg(btn) {
             const str = decodeURIComponent(btn.getAttribute('data-raw'));
