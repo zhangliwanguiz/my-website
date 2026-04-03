@@ -60,10 +60,12 @@
                 <option value="minimax-m2.5">MiniMax-M2.5</option> -->
             </select>
 
-            <div class="mobile-nav-scroll" style="margin-top: 5px;">
-                <div class="nav-item active" onclick="switchTab('chatPage', this)">💻 对话终端</div>
-                <!-- <div class="nav-item" onclick="switchTab('mediaPage', this)">🚀 个人中心</div> -->
-                                <div class="nav-item" onclick="switchTab('apiPage', this)">⚙️ API地址和密钥配置</div>
+          <div class="mobile-nav-scroll" style="margin-top: 5px;">
+                <!-- 替换为新的模块化菜单，由 switchMode 接管 -->
+                <div class="nav-item active" onclick="switchMode('chat', this)">💻 对话终端</div>
+                <div class="nav-item" onclick="switchMode('audit', this)">🛡️ 审核模块</div>
+                <div class="nav-item" onclick="switchMode('exam', this)">📝 出卷模块</div>
+                <div class="nav-item" onclick="switchTab('apiPage', this)">⚙️ API配置</div>
             </div>
 <div class="nav-section" style="display:flex; justify-content:space-between; align-items:center;">
     <span>历史会话</span>

@@ -138,12 +138,17 @@ def chat():
         
     # 最终喂给大模型的完整上下文 = 历史记录 + 当前对话
     full_messages = history_messages + [current_msg]
+    # --- 👇 添加以下新增逻辑skill 👇 ---
+    system_skill = data.get('system_skill', '')
+    if system_skill:
+        # 在发送给大模型前，动态插入 System Prompt 层级的设定
+        full_messages.insert(0, {"role": "system", "content": system_skill})
 
     try:
         response = requests.post(
             api_url, 
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": selected_model, "messages": full_messages, "stream": False, "temperature": 0.5},
+            json={"model": selected_model, "messages": full_messages, "stream": False, "temperature": 0.5, "enable_search": True},
         )
         if response.status_code == 200:
             res_json = response.json()
