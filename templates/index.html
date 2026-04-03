@@ -64,31 +64,32 @@
 
             <!-- 可滚动内容区 -->
             <div class="sidebar-content">
-                <div class="mobile-nav-scroll" style="margin-top: 5px;">
-                    <div class="nav-item active" onclick="switchMode('chat', this)">
-                        <span style="margin-right:8px;">💻</span>对话终端
-                    </div>
-                    
-                    <!-- 技能中心 -->
-                    <div class="nav-item skill-master" id="skillCenterBtn" 
-                         onclick="unlockSkills(this)" 
-                         style="border:1px dashed #cbd5e1; background:#fafafa;">
-                        <span style="margin-right:8px;">🔒</span>
-                        <span>技能中心</span>
-                        <span style="margin-left:auto; font-size:11px; color:#9ca3af;">锁定</span>
-                    </div>
-                    
-                    <!-- 动态技能列表容器 -->
-                    <div id="skillsSubMenu" style="display:none; padding-left:12px; margin-left:8px; border-left:2px solid #e5e7eb;">
-                        <div style="font-size:12px; color:#9ca3af; padding:10px; font-style:italic;">
-                            🔐 请先解锁技能中心...
-                        </div>
-                    </div>
-                    
-                    <div class="nav-item" onclick="switchTab('apiPage', this)">
-                        <span style="margin-right:8px;">⚙️</span>API配置
-                    </div>
-                </div>
+                <!-- 修改后：将 skillsSubMenu 移到外面 -->
+<div class="mobile-nav-scroll" style="margin-top: 5px;">
+    <div class="nav-item active" onclick="switchMode('chat', this)">
+        <span style="margin-right:8px;">💻</span>对话终端
+    </div>
+    
+    <!-- 技能中心按钮（保持在内） -->
+    <div class="nav-item skill-master" id="skillCenterBtn" 
+         onclick="unlockSkills(this)" 
+         style="border:1px dashed #cbd5e1; background:#fafafa;">
+        <span style="margin-right:8px;">🔒</span>
+        <span>技能中心</span>
+        <span style="margin-left:auto; font-size:11px; color:#9ca3af;">锁定</span>
+    </div>
+    
+    <div class="nav-item" onclick="switchTab('apiPage', this)">
+        <span style="margin-right:8px;">⚙️</span>API配置
+    </div>
+</div>
+
+<!-- ✅ 正确位置：移到外面，独立显示 -->
+<div id="skillsSubMenu" style="display:none; margin:8px 0 12px 16px; padding-left:12px; border-left:2px solid #e5e7eb; max-height:200px; overflow-y:auto;">
+    <div style="font-size:12px; color:#9ca3af; padding:10px; font-style:italic;">
+        🔐 请先解锁技能中心...
+    </div>
+</div>
                 
                 <div class="nav-section" style="display:flex; justify-content:space-between; align-items:center;">
                     <span>历史会话</span>
