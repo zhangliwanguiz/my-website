@@ -1142,20 +1142,21 @@ exportData() {
                         data: this.data.monthlyData.received,
                         backgroundColor: '#14b8a6',
                         borderRadius: 4,
-                        label: '已收到'
-                    },
-                    {
-                        data: this.data.monthlyData.announced,
-                        backgroundColor: '#f59e0b',
-                        borderRadius: 4,
-                        label: '已宣布'
-                    },
-                    {
-                        data: this.data.monthlyData.predicted,
-                        backgroundColor: '#86efac',
-                        borderRadius: 4,
-                        label: '预测'
+                        label: '预测月股息现金流'
                     }
+                    ,
+                    // {
+                    //     data: this.data.monthlyData.announced,
+                    //     backgroundColor: '#f59e0b',
+                    //     borderRadius: 4,
+                    //     label: '已宣布'
+                    // },
+                    // {
+                    //     data: this.data.monthlyData.predicted,
+                    //     backgroundColor: '#86efac',
+                    //     borderRadius: 4,
+                    //     label: '预测'
+                    // }
                 ]
             },
             options: {
