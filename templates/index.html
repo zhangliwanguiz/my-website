@@ -18,6 +18,7 @@
     <meta name="format-detection" content="telephone=no">
 </head>
 <body>
+
     <div class="app-container">
         
         <!-- 左侧导航区 -->
@@ -82,6 +83,10 @@
     <div class="nav-item" onclick="switchTab('apiPage', this)">
         <span style="margin-right:8px;">⚙️</span>API配置
     </div>
+ <!-- 添加在 API配置页面之后，</div>结束标签之前 -->
+<div class="nav-item" onclick="switchTab('portfolioPage', this)">
+    <span style="margin-right:8px;">📈</span>投资组合
+</div>
 </div>
 
 <!-- ✅ 正确位置：移到外面，独立显示 -->
@@ -152,7 +157,228 @@
                 </div>
             </div>
         </div>
+        <!-- 投资组合页面 HTML 结构（替换原 portfolioPage 部分） -->
+<div class="page-content" id="portfolioPage" style="background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);">
+    <div class="portfolio-container">
+        <!-- 头部资产总览 -->
+        <header class="portfolio-header">
+            <div class="asset-card">
+                <div class="asset-header-row">
+                    <div>
+                        <label class="asset-label">总资产估值</label>
+                        <div class="asset-input-wrapper">
+                            <span class="currency">¥</span>
+                            <input type="number" id="editTotalAsset" class="asset-input" value="100914.99" 
+                                   onchange="PortfolioApp.updateAsset(this.value)">
+                        </div>
+                    </div>
+                    <div class="asset-actions">
+                        <button class="btn-icon-action" onclick="PortfolioApp.analyzeWithAI()" title="AI智能分析">
+                            <span>🤖</span>
+                        </button>
+
+                    </div>
+                </div>
+                
+                <div class="income-grid">
+                    <div class="income-box">
+                        <div class="income-label">月度被动收入</div>
+                        <div class="income-value" id="displayMonthlyIncome">¥8,000</div>
+                        <div class="progress-pill">
+                            <div class="progress-fill" style="width: 100%"></div>
+                            <span class="progress-text" id="incomeProgress">目标达成 100%</span>
+                        </div>
+                    </div>
+                    <div class="income-box secondary">
+                        <div class="income-label">累计分红收益</div>
+                        <div class="income-value" id="displayTotalDividend">¥49,289</div>
+                        <div class="income-subtitle">自投资日起累计</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 关键指标卡片 -->
+        <div class="metrics-grid">
+            <div class="metric-card price-yield">
+                <div class="metric-icon">⚡</div>
+                <div class="metric-content">
+                    <div class="metric-label">价格股息率</div>
+                    <div class="metric-value" id="displayPriceYield">48.84%</div>
+                    <div class="metric-desc">基于当前市值计算</div>
+                </div>
+            </div>
+            <div class="metric-card cost-yield">
+                <div class="metric-icon">💧</div>
+                <div class="metric-content">
+                    <div class="metric-label">最低接受年化现金流</div>
+                    <div class="metric-value" id="displayCostYield">4.00%</div>
+                    <div class="metric-desc">基于当前时期的情况计算</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="portfolio-main">
+            <!-- 图表区域 -->
+            <section class="chart-section">
+                <div class="section-card">
+                    <div class="card-header-custom">
+                        <h3>📊 年股息收入分布</h3>
+                        <div class="year-total">
+                            年度预计 <strong id="displayYearTotal">¥49,289</strong>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="dividendChart"></canvas>
+                    </div>
+                    <div class="chart-legend">
+                        <div class="legend-item">
+                            <span class="dot received"></span>
+                            <span>已到账</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="dot announced"></span>
+                            <span>已宣告</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="dot predicted"></span>
+                            <span>预测</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 持仓列表 -->
+            <section class="holdings-section">
+                <div class="section-card">
+                   <div class="card-header-custom">
+    <h3>📈 资产分布 <span class="asset-total-badge" id="totalHoldingValue">¥0</span></h3>
+    <div class="header-actions">
+        <button class="btn-icon-text" onclick="PortfolioApp.importJSON()" title="导入JSON">
+            📥 导入
+        </button>
+        <button class="btn-icon-text" onclick="PortfolioApp.exportJSON()" title="导出JSON">
+            📤 导出
+        </button>
+        <button class="btn-add-new" onclick="openAddModal()">
+            <span>+</span> 新增持仓
+        </button>
     </div>
+</div>
+
+<!-- 隐藏的file input用于导入 -->
+<input type="file" id="jsonImportInput" accept=".json" style="display:none" onchange="PortfolioApp.handleImportFile(event)">
+                    <div id="holdingsList" class="holdings-list-container">
+                        <!-- 动态渲染持仓项 -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 模态框 - 添加/编辑股票 -->
+    <div id="stockModal" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalTitle">添加持仓</h3>
+                <button class="btn-close" onclick="closeModal()">×</button>
+            </div>
+            <form id="stockForm" onsubmit="saveStock(event)" class="modal-form">
+                <input type="hidden" id="stockId">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>股票名称</label>
+                        <input type="text" id="stockName" required placeholder="如：贵州茅台">
+                    </div>
+                    <div class="form-group">
+                        <label>股票代码</label>
+                        <input type="text" id="stockCode" required placeholder="600519">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>当前价格 (¥)</label>
+                        <input type="number" id="stockPrice" step="0.01" required placeholder="1688.00">
+                    </div>
+                    <div class="form-group">
+                        <label>持仓股数</label>
+                        <input type="number" id="stockShares" required placeholder="100">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>年股息率 (%)</label>
+                    <input type="number" id="stockYield" step="0.01" required placeholder="3.5">
+                </div>
+
+                <div class="form-group">
+                    <label class="months-label">分红月份 <span class="hint">点击选择多个</span></label>
+                    <div class="months-grid">
+    <label class="month-checkbox">
+        <input type="checkbox" value="1">
+        <span>1月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="2">
+        <span>2月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="3">
+        <span>3月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="4">
+        <span>4月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="5">
+        <span>5月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="6">
+        <span>6月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="7">
+        <span>7月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="8">
+        <span>8月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="9">
+        <span>9月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="10">
+        <span>10月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="11">
+        <span>11月</span>
+    </label>
+    <label class="month-checkbox">
+        <input type="checkbox" value="12">
+        <span>12月</span>
+    </label>
+</div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn-primary">保存持仓</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 悬浮添加按钮（移动端） -->
+    <button class="fab-mobile" onclick="openAddModal()">+</button>
+</div>
     
     <script src="/static/js/skills.js"></script> 
     <script src="/static/js/main.js"></script>

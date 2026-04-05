@@ -82,11 +82,32 @@ function loadConfig() {
             }
         });
 
-    function switchTab(pageId, element) {
-    document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+function switchTab(pageId, element) {
+    // 隐藏所有页面
+    document.querySelectorAll('.page-content').forEach(p => {
+        p.classList.remove('active');
+        p.style.display = 'none'; // 强制确保隐藏
+    });
+    
+    // 移除所有导航激活状态
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById(pageId).classList.add('active');
-    element.classList.add('active');
+    
+    // 显示目标页面
+    const targetPage = document.getElementById(pageId);
+    if (targetPage) {
+        targetPage.classList.add('active');
+        targetPage.style.display = 'flex'; // 强制显示
+        
+        // 如果是投资组合，初始化
+        if (pageId === 'portfolioPage' && window.PortfolioApp) {
+            setTimeout(() => PortfolioApp.init(), 100);
+        }
+    } else {
+        console.error('页面不存在:', pageId);
+    }
+    
+    // 激活导航
+    if (element) element.classList.add('active');
 }
         function quickPrompt(t) { document.getElementById('chatInput').value = t; switchTab('chatPage', document.querySelectorAll('.nav-item')[0]); sendMessage(); }
         function clearChat() { document.getElementById('chatBox').innerHTML = `<div class="msg-wrapper bot"><div class="avatar bot">AI</div><div class="msg-bubble">记忆重置完毕。</div></div>`; window.pendingUploads = []; renderAttachments(); }
@@ -621,54 +642,54 @@ window.showToast = function(msg, duration=2000) {
 };
 
 // 渲染每日一题卡片到聊天框（全局可用）
-window.renderDailyProblemCard = function(p) {
-    const chatBox = document.getElementById('chatBox');
-    if (!chatBox) return;
+// window.renderDailyProblemCard = function(p) {
+//     const chatBox = document.getElementById('chatBox');
+//     if (!chatBox) return;
     
-    const wrapper = document.createElement('div');
-    wrapper.className = 'msg-wrapper bot';
-    wrapper.style.animation = 'fadeIn 0.5s ease';
+//     const wrapper = document.createElement('div');
+//     wrapper.className = 'msg-wrapper bot';
+//     wrapper.style.animation = 'fadeIn 0.5s ease';
     
-    wrapper.innerHTML = `
-        <div class="avatar bot">🏆</div>
-        <div class="msg-bubble" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; max-width: 100%;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:8px;">
-                <div style="font-weight:700; font-size:15px;">📅 今日 Codeforces 推荐</div>
-                <span style="background:rgba(255,255,255,0.2); padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${p.difficulty_emoji} ${p.rating}</span>
-            </div>
+//     wrapper.innerHTML = `
+//         <div class="avatar bot">🏆</div>
+//         <div class="msg-bubble" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; max-width: 100%;">
+//             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:8px;">
+//                 <div style="font-weight:700; font-size:15px;">📅 今日 Codeforces 推荐</div>
+//                 <span style="background:rgba(255,255,255,0.2); padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${p.difficulty_emoji} ${p.rating}</span>
+//             </div>
             
-            <div style="font-weight:600; font-size:16px; margin-bottom:8px; line-height:1.4;">
-                ${p.name}
-            </div>
+//             <div style="font-weight:600; font-size:16px; margin-bottom:8px; line-height:1.4;">
+//                 ${p.name}
+//             </div>
             
-            <div style="opacity:0.95; margin-bottom:12px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px;">
-                ${p.tags.map(tag => `<span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; font-size:11px;">${tag}</span>`).join('')}
-            </div>
+//             <div style="opacity:0.95; margin-bottom:12px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px;">
+//                 ${p.tags.map(tag => `<span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; font-size:11px;">${tag}</span>`).join('')}
+//             </div>
             
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-                <a href="${p.url}" target="_blank" style="background:rgba(255,255,255,0.95); color:#764ba2; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px;">
-                    🔗 打开题目
-                </a>
-                <button onclick="sendQuickPrompt('请帮我分析 CF ${p.contestId}${p.index} 的解法，题目：${p.name}，难度${p.rating}')" 
-                        style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
-                    💡 获取题解
-                </button>
-                <button onclick="window.open('https://codeforces.com/contest/${p.contestId}/submission', '_blank')"
-                        style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
-                    👥 查看题解区
-                </button>
-            </div>
+//             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+//                 <a href="${p.url}" target="_blank" style="background:rgba(255,255,255,0.95); color:#764ba2; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px;">
+//                     🔗 打开题目
+//                 </a>
+//                 <button onclick="sendQuickPrompt('请帮我分析 CF ${p.contestId}${p.index} 的解法，题目：${p.name}，难度${p.rating}')" 
+//                         style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+//                     💡 获取题解
+//                 </button>
+//                 <button onclick="window.open('https://codeforces.com/contest/${p.contestId}/submission', '_blank')"
+//                         style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">
+//                     👥 查看题解区
+//                 </button>
+//             </div>
             
-            <div style="margin-top:10px; font-size:11px; opacity:0.7; text-align:right;">
-                题目编号: ${p.contestId}${p.index} | 通过人数: ${p.solved_count}
-            </div>
-        </div>
-    `;
+//             <div style="margin-top:10px; font-size:11px; opacity:0.7; text-align:right;">
+//                 题目编号: ${p.contestId}${p.index} | 通过人数: ${p.solved_count}
+//             </div>
+//         </div>
+//     `;
     
-    // 插入到聊天框末尾
-    chatBox.appendChild(wrapper);
-    chatBox.scrollTop = chatBox.scrollHeight;
-};
+//     // 插入到聊天框末尾
+//     chatBox.appendChild(wrapper);
+//     chatBox.scrollTop = chatBox.scrollHeight;
+// };
 // 处理 /daily 命令
 async function handleDailyCommand(forceRefresh = false) {
     const loadingMsg = appendMsg('bot', '<span style="color:#9ca3af;">🏆 正在从 Codeforces 获取' + (forceRefresh ? '新' : '今日') + '推荐...</span>');
@@ -778,3 +799,514 @@ window.startSolvingThis = function() {
     
     sendQuickPrompt(prompt);
 };
+// ==================== 投资组合管理系统 ====================
+const PortfolioApp = {
+    data: {
+        totalAsset: 100914.99,
+        monthlyIncome: 5000,
+        monthlyTarget: 500,
+        totalDividend: 2213.06,
+        priceYield: 4,
+        costYield: 4,
+        holdings: [
+            {
+                id: 1,
+                name: "波场",
+                code: "TRX",
+                price: 1,
+                shares: 239344,
+                yield: 20.73,
+                dividendMonths: [1,2,3,4,5,6,7,8,9,10,11, 12],
+                annualDividend: 0
+            },
+             {
+                id: 2,
+                name: "红利低波100",
+                code: "159307",
+                price: 1,
+                shares: 200000,
+                yield: 4.77,
+                dividendMonths: [3,6,9,12],
+                annualDividend: 0
+            },
+      {
+      id: 3,
+      name: "长江电力",
+      code: "600900",
+      price: 1,
+      shares: 100000,
+      yield: 3.8,
+      dividendMonths: [1,7],
+      annualDividend: 3800
+    },
+    {
+      id: 4,
+      name: "招商银行",
+      code: "600036",
+      price: 1,
+      shares: 100000,
+      yield: 5.12,
+      dividendMonths: [1,7],
+      annualDividend: 5120
+    }
+        ],
+        monthlyData: {
+            received: [0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0,0],
+            announced: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            predicted: [50, 50, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+    },
+    
+    chart: null,
+
+    init() {
+        this.loadData();
+        this.render();
+        this.initChart();
+        
+        // 监听页面切换，初始化图表
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((m) => {
+                if (m.target.id === 'portfolioPage' && m.target.classList.contains('active')) {
+                    setTimeout(() => this.initChart(), 100);
+                }
+            });
+        });
+        const page = document.getElementById('portfolioPage');
+        if (page) observer.observe(page, { attributes: true });
+    },
+// ✅ 添加这行：把 showToast 挂到 PortfolioApp 上
+    showToast(msg, duration = 2000) {
+        if (typeof window.showToast === 'function') {
+            window.showToast(msg, duration);
+        } else {
+            // 备用：如果全局 showToast 不存在，使用 alert
+            alert(msg);
+        }
+    },
+    loadData() {
+        const saved = localStorage.getItem('portfolioData');
+        if (saved) {
+            this.data = JSON.parse(saved);
+        }
+        this.calculateMetrics();
+    },
+
+    saveData() {
+        localStorage.setItem('portfolioData', JSON.stringify(this.data));
+        this.calculateMetrics();
+        this.render();
+        if (this.chart) this.updateChart();
+    },
+
+    calculateMetrics() {
+        // 重新计算总分红、收益率等
+        let totalDividend = 0;
+        this.data.holdings.forEach(h => {
+            h.annualDividend = Math.round(h.price * h.shares * (h.yield / 100));
+            totalDividend += h.annualDividend;
+        });
+        this.data.totalDividend = totalDividend;
+        this.data.priceYield = (totalDividend / this.data.totalAsset * 100).toFixed(2);
+        
+        // 计算月度分布
+        const monthly = new Array(12).fill(0);
+        this.data.holdings.forEach(h => {
+            const perTime = h.annualDividend / h.dividendMonths.length;
+            h.dividendMonths.forEach(m => {
+                monthly[m-1] += perTime;
+            });
+        });
+        this.data.monthlyData.received = monthly;
+    },
+// 更新 PortfolioApp 的 render 方法（替换原 render 函数）
+render() {
+    // 顶部数据
+    const editInput = document.getElementById('editTotalAsset');
+    if (editInput) editInput.value = this.data.totalAsset;
+    
+    // 关键指标
+    const monthlyIncome = this.data.holdings.reduce((sum, h) => {
+        return sum + (h.annualDividend / 12);
+    }, 0);
+    
+    document.getElementById('displayMonthlyIncome').textContent = '¥' + Math.round(monthlyIncome).toLocaleString();
+    document.getElementById('displayTotalDividend').textContent = '¥' + this.data.totalDividend.toLocaleString();
+    document.getElementById('displayPriceYield').textContent = this.data.priceYield + '%';
+    document.getElementById('displayCostYield').textContent = this.data.costYield + '%';
+    document.getElementById('displayYearTotal').textContent = '¥' + this.data.totalDividend.toLocaleString();
+    
+    // 进度条
+    const progress = Math.min(100, (monthlyIncome / 8000 * 100)).toFixed(0);
+    const progressEl = document.querySelector('.progress-fill');
+    const progressText = document.getElementById('incomeProgress');
+    if (progressEl) progressEl.style.width = progress + '%';
+    if (progressText) progressText.textContent = `目标达成 ${progress}%`;
+
+    // 持仓列表
+// 渲染持仓列表
+const list = document.getElementById('holdingsList');
+if (!list) return;
+
+// 先计算总市值（用于计算占比）
+const totalMarketValue = this.data.holdings.reduce((sum, stock) => {
+    return sum + (stock.price * stock.shares);
+}, 0);
+
+// 更新顶部总市值标签
+const totalBadge = document.getElementById('totalHoldingValue');
+if (totalBadge) {
+    totalBadge.textContent = '¥' + Math.round(totalMarketValue).toLocaleString();
+}
+
+if (this.data.holdings.length === 0) {
+    list.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">📈</div>
+            <div class="empty-title">暂无持仓记录</div>
+            <div class="empty-desc">点击右上角"新增持仓"开始记录您的投资</div>
+        </div>
+    `;
+    return;
+}
+
+// 渲染持仓项（带占比）
+list.innerHTML = this.data.holdings.map(stock => {
+    const totalValue = stock.price * stock.shares;
+    // 计算占比（避免除以0）
+    const percentage = totalMarketValue > 0 
+        ? ((totalValue / totalMarketValue) * 100).toFixed(1) 
+        : 0;
+    
+    return `
+    <div class="holding-compact" onclick="PortfolioApp.editStock(${stock.id})">
+        <button class="btn-del-compact" onclick="event.stopPropagation(); PortfolioApp.deleteStock(${stock.id})" title="删除">
+            🗑️
+        </button>
+        
+        <div class="holding-top">
+            <div class="holding-name">
+                ${stock.name}
+                <span class="holding-code">${stock.code}</span>
+                <span class="holding-yield-tag">${stock.yield}%</span>
+            </div>
+            <div class="holding-value-wrapper">
+                <span class="holding-percentage">${percentage}%</span>
+                <div class="holding-value-main">¥${totalValue.toLocaleString()}</div>
+            </div>
+        </div>
+        
+        <div class="holding-bottom">
+            <div class="holding-shares-detail">
+                <span>¥${stock.price} × ${stock.shares.toLocaleString()}股</span>
+                <span class="holding-dividend">年化 ¥${stock.annualDividend.toLocaleString()}</span>
+            </div>
+        </div>
+        
+        <div class="holding-months-compact">
+            ${stock.dividendMonths.map(m => `<div class="month-tag-compact">${m}月</div>`).join('')}
+        </div>
+    </div>
+    `;
+}).join('');
+    // 更新图表
+    if (this.chart) this.updateChart();
+},
+// ==================== JSON 导入/导出功能 ====================
+
+// 导出持仓数据为 JSON 文件
+exportJSON() {
+    const exportData = {
+        version: "1.0",
+        exportTime: new Date().toISOString(),
+        summary: {
+            totalAsset: this.data.totalAsset,
+            monthlyTarget: this.data.monthlyTarget || 8000,
+            totalDividend: this.data.totalDividend,
+            holdingCount: this.data.holdings.length
+        },
+        holdings: this.data.holdings.map(h => ({
+            id: h.id,
+            name: h.name,
+            code: h.code,
+            price: h.price,
+            shares: h.shares,
+            yield: h.yield,
+            dividendMonths: h.dividendMonths,
+            annualDividend: h.annualDividend
+        }))
+    };
+
+    // 创建下载
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // 文件名包含日期
+    const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+    link.download = `投资组合_${dateStr}.json`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    // 提示
+    this.showToast('✅ 持仓数据已导出');
+},
+
+// 触发导入文件选择
+importJSON() {
+    document.getElementById('jsonImportInput').click();
+},
+
+// 处理导入的文件
+handleImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            
+            // 验证数据格式
+            if (!data.holdings || !Array.isArray(data.holdings)) {
+                throw new Error('无效的JSON格式：缺少holdings数组');
+            }
+
+            // 确认是否覆盖
+            if (this.data.holdings.length > 0) {
+                if (!confirm(`检测到 ${data.holdings.length} 条持仓记录。\n是否覆盖当前 ${this.data.holdings.length} 条记录？`)) {
+                    event.target.value = ''; // 清空input
+                    return;
+                }
+            }
+
+            // 导入数据
+            this.data.holdings = data.holdings.map(h => ({
+                id: h.id || Date.now() + Math.random(),
+                name: h.name,
+                code: h.code,
+                price: parseFloat(h.price),
+                shares: parseInt(h.shares),
+                yield: parseFloat(h.yield),
+                dividendMonths: h.dividendMonths || [],
+                annualDividend: h.annualDividend || Math.round(h.price * h.shares * (h.yield / 100))
+            }));
+
+            // 导入其他设置（如果存在）
+            if (data.summary) {
+                this.data.totalAsset = data.summary.totalAsset || this.data.totalAsset;
+                this.data.monthlyTarget = data.summary.monthlyTarget || this.data.monthlyTarget;
+            }
+
+            // 保存并刷新
+            this.saveData();
+            this.render();
+            this.showToast(`✅ 成功导入 ${data.holdings.length} 条持仓记录`);
+
+        } catch (err) {
+            alert('❌ 导入失败：' + err.message);
+            console.error('Import error:', err);
+        }
+        
+        // 清空input，允许重复导入同一文件
+        event.target.value = '';
+    };
+    
+    reader.readAsText(file);
+},
+
+// 改进的导出数据方法（包含完整信息）
+exportData() {
+    // 备用导出方法，复制exportJSON的功能
+    this.exportJSON();
+},
+
+    initChart() {
+        const ctx = document.getElementById('dividendChart');
+        if (!ctx) return;
+        
+        if (this.chart) {
+            this.chart.destroy();
+        }
+
+        this.chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                datasets: [
+                    {
+                        data: this.data.monthlyData.received,
+                        backgroundColor: '#14b8a6',
+                        borderRadius: 4,
+                        label: '已收到'
+                    },
+                    {
+                        data: this.data.monthlyData.announced,
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 4,
+                        label: '已宣布'
+                    },
+                    {
+                        data: this.data.monthlyData.predicted,
+                        backgroundColor: '#86efac',
+                        borderRadius: 4,
+                        label: '预测'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: (ctx) => '¥' + ctx.raw.toFixed(0)
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f3f4f6', drawBorder: false },
+                        ticks: {
+                            callback: (v) => '¥' + v,
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    updateChart() {
+        if (!this.chart) return;
+        this.chart.data.datasets[0].data = this.data.monthlyData.received;
+        this.chart.update();
+    },
+
+    updateAsset(value) {
+        this.data.totalAsset = parseFloat(value);
+        this.saveData();
+    },
+
+    // 模态框操作
+    openModal(editId = null) {
+        const modal = document.getElementById('stockModal');
+        const form = document.getElementById('stockForm');
+        const title = document.getElementById('modalTitle');
+        
+        if (editId) {
+            const stock = this.data.holdings.find(h => h.id === editId);
+            title.textContent = '编辑股票';
+            document.getElementById('stockId').value = stock.id;
+            document.getElementById('stockName').value = stock.name;
+            document.getElementById('stockCode').value = stock.code;
+            document.getElementById('stockPrice').value = stock.price;
+            document.getElementById('stockShares').value = stock.shares;
+            document.getElementById('stockYield').value = stock.yield;
+            
+            // 勾选月份
+            document.querySelectorAll('.month-chip input').forEach(cb => {
+                cb.checked = stock.dividendMonths.includes(parseInt(cb.value));
+            });
+        } else {
+            title.textContent = '添加股票';
+            form.reset();
+            document.getElementById('stockId').value = '';
+            document.querySelectorAll('.month-chip input').forEach(cb => cb.checked = false);
+        }
+        
+        modal.classList.add('active');
+    },
+
+    closeModal() {
+        document.getElementById('stockModal').classList.remove('active');
+    },
+
+    saveStock(e) {
+        e.preventDefault();
+        const id = document.getElementById('stockId').value;
+        const months = Array.from(document.querySelectorAll('.month-chip input:checked'))
+            .map(cb => parseInt(cb.value));
+        
+        const stockData = {
+            id: id ? parseInt(id) : Date.now(),
+            name: document.getElementById('stockName').value,
+            code: document.getElementById('stockCode').value,
+            price: parseFloat(document.getElementById('stockPrice').value),
+            shares: parseInt(document.getElementById('stockShares').value),
+            yield: parseFloat(document.getElementById('stockYield').value),
+            dividendMonths: months
+        };
+        
+        if (id) {
+            const idx = this.data.holdings.findIndex(h => h.id === parseInt(id));
+            this.data.holdings[idx] = stockData;
+        } else {
+            this.data.holdings.push(stockData);
+        }
+        
+        this.saveData();
+        this.closeModal();
+    },
+
+    editStock(id) {
+        this.openModal(id);
+    },
+
+    deleteStock(id) {
+        if (!confirm('确定删除这只股票？')) return;
+        this.data.holdings = this.data.holdings.filter(h => h.id !== id);
+        this.saveData();
+    },
+
+    // AI分析功能
+    analyzeWithAI() {
+        const prompt = `请分析我的投资组合：
+总资产：¥${this.data.totalAsset}
+持仓：${this.data.holdings.map(h => `${h.name}(${h.code}) ${h.shares}股，股息率${h.yield}%`).join('，')}
+年度总分红：¥${this.data.totalDividend}
+价格股息率：${this.data.priceYield}%
+
+请给出：
+1. 风险评估
+2. 分红稳定性分析
+3. 优化建议`;
+        
+        // 切换到聊天页并发送
+        document.getElementById('chatInput').value = prompt;
+        switchTab('chatPage', document.querySelector('.nav-item'));
+        sendMessage();
+    }
+};
+
+// 全局函数
+function openAddModal() { PortfolioApp.openModal(); }
+function closeModal() { PortfolioApp.closeModal(); }
+function saveStock(e) { PortfolioApp.saveStock(e); }
+function updateAsset(v) { PortfolioApp.updateAsset(v); }
+
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+    // 动态加载 Chart.js
+    if (!window.Chart) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => PortfolioApp.init();
+        document.head.appendChild(script);
+    } else {
+        PortfolioApp.init();
+    }
+});
