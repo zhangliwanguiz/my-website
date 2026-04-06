@@ -824,31 +824,52 @@ const PortfolioApp = {
                 name: "红利低波100",
                 code: "159307",
                 price: 1,
-                shares: 200000,
+                shares: 800000,
                 yield: 4.77,
                 dividendMonths: [3,6,9,12],
                 annualDividend: 0
-            },
+            }
+            ,
       {
       id: 3,
-      name: "长江电力",
-      code: "600900",
+      name: "纳斯达克100",
+      code: "美股",
       price: 1,
-      shares: 100000,
-      yield: 3.8,
-      dividendMonths: [1,7],
-      annualDividend: 3800
-    },
-    {
-      id: 4,
-      name: "招商银行",
-      code: "600036",
-      price: 1,
-      shares: 100000,
-      yield: 5.12,
-      dividendMonths: [1,7],
-      annualDividend: 5120
+      shares: 0,
+      yield: 0,
+      dividendMonths: [],
+      annualDividend: 0
     }
+    // {
+    //   id: 4,
+    //   name: "招商银行",
+    //   code: "600036",
+    //   price: 1,
+    //   shares: 100000,
+    //   yield: 5.12,
+    //   dividendMonths: [1,7],
+    //   annualDividend: 5120
+    // },
+    // {
+    //   id: 5,
+    //   name: "中国移动",
+    //   code: "600941",
+    //   price: 1,
+    //   shares: 100000,
+    //   yield: 5.12,
+    //   dividendMonths: [6,9],
+    //   annualDividend: 5120
+    // },
+    // {
+    //   id: 6,
+    //   name: "中国平安",
+    //   code: "600036",
+    //   price: 1,
+    //   shares: 100000,
+    //   yield: 4.72,
+    //   dividendMonths: [6,10],
+    //   annualDividend: 5120
+    // }
         ],
         monthlyData: {
             received: [0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0,0],
